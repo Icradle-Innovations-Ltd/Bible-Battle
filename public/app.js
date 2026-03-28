@@ -3,6 +3,24 @@ const ANSWER_TONES = ["tone-a", "tone-b", "tone-c", "tone-d"];
 const ANSWER_LABELS = ["A", "B", "C", "D"];
 const RESUME_KEY = "bible-battle-resume";
 const NAME_KEY = "bible-battle-last-name";
+const CATEGORY_KEY = "bible-battle-last-category";
+const CATEGORY_OPTIONS = [
+  {
+    value: "mixed",
+    label: "Mixed",
+    description: "Blend Old and New Testament questions."
+  },
+  {
+    value: "old",
+    label: "Old Testament",
+    description: "Creation, kings, prophets, and covenant stories."
+  },
+  {
+    value: "new",
+    label: "New Testament",
+    description: "Jesus, disciples, Acts, and the early church."
+  }
+];
 
 const app = document.getElementById("app");
 const urlParams = new URLSearchParams(window.location.search);
@@ -12,6 +30,9 @@ const state = {
   connected: false,
   role: "guest",
   session: null,
+  hostSetup: {
+    categorySelection: window.localStorage.getItem(CATEGORY_KEY) || "mixed"
+  },
   join: {
     pin: (urlParams.get("pin") || "").trim(),
     name: window.localStorage.getItem(NAME_KEY) || ""
@@ -54,6 +75,11 @@ function saveResume(payload) {
 
 function clearResume() {
   window.sessionStorage.removeItem(RESUME_KEY);
+}
+
+function saveCategorySelection(categorySelection) {
+  state.hostSetup.categorySelection = categorySelection;
+  window.localStorage.setItem(CATEGORY_KEY, categorySelection);
 }
 
 function showToast(message) {
@@ -114,6 +140,9 @@ function connectSocket() {
       case "session:state":
         state.role = message.role;
         state.session = message.session;
+        if (message.session?.selectedCategory) {
+          saveCategorySelection(message.session.selectedCategory);
+        }
         saveResume(message.resume);
         render();
         break;
@@ -176,6 +205,57 @@ function ordinal(rank) {
   return `${rank}th`;
 }
 
+function renderPointsText(question) {
+  if (!question) {
+    return "";
+  }
+  return `${question.basePoints}-${question.maxPoints} pts`;
+}
+
+function renderRewardBadges(rewards, compact = false) {
+  if (!rewards?.length) {
+    return "";
+  }
+
+  return `
+    <div class="reward-strip ${compact ? "compact" : ""}">
+      ${rewards
+        .map(
+          (reward) => `
+            <span
+              class="reward-badge tone-${escapeHtml(reward.tone)} ${compact ? "compact" : ""}"
+              title="${escapeHtml(reward.description)}"
+            >
+              ${escapeHtml(reward.name)}
+            </span>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderCategorySelector(selectedCategory) {
+  return `
+    <div class="category-selector">
+      ${CATEGORY_OPTIONS.map((option) => {
+        const activeClass = selectedCategory === option.value ? "active" : "";
+        return `
+          <button
+            class="category-option ${activeClass}"
+            data-action="select-category"
+            data-category-selection="${option.value}"
+            type="button"
+          >
+            <span class="category-option-title">${escapeHtml(option.label)}</span>
+            <span class="category-option-copy">${escapeHtml(option.description)}</span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderHeader() {
   const liveText = state.connected ? "Live sync ready" : "Reconnecting...";
   const sessionPin = state.session?.pin
@@ -212,9 +292,13 @@ function renderLanding() {
           </p>
           <div class="chip-row">
             <span class="chip">10 rotating questions</span>
-            <span class="chip">Speed bonus scoring</span>
+            <span class="chip">Difficulty-weighted scoring</span>
             <span class="chip">Old + New Testament mix</span>
             <span class="chip">Mobile-ready join flow</span>
+          </div>
+          <div class="setup-block">
+            <p class="muted">Choose the quiz lane before you host</p>
+            ${renderCategorySelector(state.hostSetup.categorySelection)}
           </div>
         </div>
         <div class="hero-foot">
@@ -277,8 +361,12 @@ function renderHostLobby(session) {
         <span class="eyebrow">Host mode</span>
         <h2>Room is live. Gather your players.</h2>
         <p class="panel-intro">
-          Share the join link or game PIN, wait for players to pop into the lobby, then launch the battle.
+          Share the join link or game PIN, set the testament lane for this room, then launch the battle.
         </p>
+        <div class="setup-block">
+          <p class="muted">Selected category</p>
+          ${renderCategorySelector(session.selectedCategory)}
+        </div>
         <div class="session-pin">
           <div class="pin-box">
             <span class="pin-label">Game PIN</span>
@@ -290,9 +378,10 @@ function renderHostLobby(session) {
           </div>
         </div>
         <div class="chip-row">
+          <span class="chip">${escapeHtml(session.categoryLabel)}</span>
           <span class="chip">10 questions</span>
           <span class="chip">20s timer</span>
-          <span class="chip">Speed bonus points</span>
+          <span class="chip">Difficulty + speed scoring</span>
           <span class="chip">Live reveal screens</span>
         </div>
       </article>
@@ -326,8 +415,13 @@ function renderPlayerLobby(session) {
             <span class="pin-label">Game PIN</span>
             <span class="pin-value mono" style="font-size:clamp(1.8rem,4vw,3rem)">${escapeHtml(session.pin)}</span>
           </div>
+          <div class="pin-box">
+            <span class="pin-label">Category</span>
+            <span class="pin-value" style="font-size:clamp(1.15rem,2.2vw,1.55rem);letter-spacing:0.03em">${escapeHtml(session.categoryLabel)}</span>
+          </div>
         </div>
         <div class="chip-row">
+          <span class="chip">${escapeHtml(session.categoryLabel)}</span>
           <span class="chip">Rank updates after every question</span>
           <span class="chip">Scripture references on reveal</span>
           <span class="chip">Hosted live</span>
@@ -371,6 +465,7 @@ function renderQuestionCard(session, isHost) {
             <span class="chip">${escapeHtml(question.testament)}</span>
             <span class="chip">${escapeHtml(question.category)}</span>
             <span class="chip">${escapeHtml(question.difficulty)}</span>
+            <span class="chip">${escapeHtml(renderPointsText(question))}</span>
           </div>
         </div>
         ${renderTimer()}
@@ -413,6 +508,27 @@ function renderQuestionSidebar(session, isHost) {
         <span class="muted">${isHost ? "Live answer count" : "Your status"}</span>
         <strong>${escapeHtml(statusText)}</strong>
       </div>
+      <div>
+        <p class="muted">Category lane</p>
+        <div class="chip-row">
+          <span class="chip">${escapeHtml(session.categoryLabel)}</span>
+        </div>
+      </div>
+      <div class="metric">
+        <span class="muted">Round value</span>
+        <strong>${escapeHtml(renderPointsText(session.question))}</strong>
+      </div>
+      <p class="fine-print" style="margin:0">Base ${session.question.basePoints} points for a correct answer, plus up to ${session.question.speedBonusPoints} speed bonus.</p>
+      ${
+        session.question.difficulty === "Hard"
+          ? `
+            <div class="reward-card">
+              <strong>Hard-mode rewards live</strong>
+              <p class="fine-print" style="margin:0.45rem 0 0">High scores on this round unlock special badges that stay with you through the leaderboard and final screen.</p>
+            </div>
+          `
+          : ""
+      }
       ${
         isHost
           ? `
@@ -518,6 +634,7 @@ function renderLeaderboardRows(players) {
             <div class="leader-row ${player.connected ? "" : "offline"}">
               <div class="leader-meta">
                 <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                ${renderRewardBadges(player.hardRewards, true)}
                 <span class="subtle">${player.lastAnswerCorrect ? `+${player.lastDelta} this round` : player.lastAnswerCorrect === false ? "Missed or timed out" : "No round data"}</span>
               </div>
               <strong>${player.score} pts</strong>
@@ -537,13 +654,28 @@ function renderReveal(session, isHost) {
     : self
       ? "Not this round. Watch the reference and bounce back."
       : `${session.answeredCount} players locked in answers`;
+  const unlockedRewards =
+    session.question.difficulty === "Hard" && self?.latestRewards?.length
+      ? `
+        <div class="reward-card reward-card-highlight">
+          <strong>Hard-mode reward unlocked</strong>
+          ${renderRewardBadges(self.latestRewards)}
+          <p class="fine-print" style="margin:0">You crossed a badge threshold with that hard-question score.</p>
+        </div>
+      `
+      : "";
 
   return `
     <section class="result-layout">
       <article class="panel question-panel span-7">
         <span class="eyebrow">Answer reveal</span>
         <h2>${escapeHtml(session.question.prompt)}</h2>
+        <div class="chip-row" style="margin-bottom:1rem">
+          <span class="chip">${escapeHtml(session.question.difficulty)}</span>
+          <span class="chip">${escapeHtml(renderPointsText(session.question))}</span>
+        </div>
         ${!isHost ? `<div class="result-banner ${bannerClass}">${escapeHtml(bannerText)}</div>` : ""}
+        ${!isHost ? unlockedRewards : ""}
         ${renderRevealQuestion(session.question, self)}
         <div class="scripture-card" style="margin-top:1rem">
           <strong>${escapeHtml(session.question.reference)}</strong>
@@ -554,6 +686,9 @@ function renderReveal(session, isHost) {
         <div class="metric">
           <span class="muted">Leaderboard</span>
           <strong>${session.winner ? escapeHtml(session.winner.name) : "No players yet"}</strong>
+        </div>
+        <div class="chip-row">
+          <span class="chip">${escapeHtml(session.categoryLabel)}</span>
         </div>
         ${renderBreakdown(session)}
         ${renderLeaderboardRows(session.players)}
@@ -579,6 +714,7 @@ function renderFinal(session, isHost) {
           ${session.winner ? `${escapeHtml(session.winner.name)} led the room with ${session.winner.score} points.` : "No winner was recorded for this session."}
         </p>
         <div class="chip-row">
+          <span class="winner-stat">${escapeHtml(session.categoryLabel)}</span>
           <span class="winner-stat">Champion score: ${session.winner?.score || 0}</span>
           ${
             self
@@ -586,6 +722,7 @@ function renderFinal(session, isHost) {
               : `<span class="winner-stat">${session.playerCount} total players</span>`
           }
         </div>
+        ${session.winner?.hardRewards?.length ? renderRewardBadges(session.winner.hardRewards) : ""}
         <div class="podium-grid">
           ${topThree
             .map(
@@ -594,6 +731,7 @@ function renderFinal(session, isHost) {
                   <span class="podium-rank">#${player.rank}</span>
                   <strong>${escapeHtml(player.name)}</strong>
                   <span class="subtle">${player.score} points</span>
+                  ${renderRewardBadges(player.hardRewards, true)}
                 </div>
               `
             )
@@ -658,7 +796,7 @@ function renderFooterStatus() {
   return `
     <section class="panel status-panel" style="margin-top:1rem">
       <span class="muted">${escapeHtml(hostStatus)}</span>
-      <span class="subtle">${state.session.playerCount} players • ${state.session.totalQuestions} questions</span>
+      <span class="subtle">${escapeHtml(state.session.categoryLabel)} • ${state.session.playerCount} players • ${state.session.totalQuestions} questions</span>
     </section>
   `;
 }
@@ -720,8 +858,28 @@ app.addEventListener("click", async (event) => {
 
   switch (action) {
     case "create-session":
-      sendMessage({ type: "host:create-session" });
+      sendMessage({
+        type: "host:create-session",
+        categorySelection: state.hostSetup.categorySelection
+      });
       break;
+    case "select-category": {
+      const categorySelection = actionTarget.dataset.categorySelection;
+      if (!categorySelection) {
+        break;
+      }
+
+      saveCategorySelection(categorySelection);
+      if (state.role === "host" && state.session?.status === "lobby") {
+        sendMessage({
+          type: "host:update-category",
+          categorySelection
+        });
+      } else {
+        render();
+      }
+      break;
+    }
     case "focus-join": {
       const pinInput = document.getElementById("pin");
       pinInput?.focus();

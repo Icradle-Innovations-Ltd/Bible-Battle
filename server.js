@@ -11,6 +11,59 @@ const QUESTION_DURATION_MS = 20_000;
 const HOST_GRACE_MS = 15_000;
 const MAX_PLAYERS = 40;
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+const QUESTIONS_PER_GAME = 10;
+const DEFAULT_CATEGORY_SELECTION = "mixed";
+const DIFFICULTY_SCORING = {
+  Easy: {
+    basePoints: 500,
+    speedBonusPoints: 300
+  },
+  Medium: {
+    basePoints: 700,
+    speedBonusPoints: 500
+  },
+  Hard: {
+    basePoints: 1000,
+    speedBonusPoints: 600
+  }
+};
+const HARD_REWARD_TIERS = [
+  {
+    id: "lionheart-badge",
+    name: "Lionheart Badge",
+    minHardPoints: 1200,
+    tone: "bronze",
+    description: "Strong score on the toughest Bible rounds."
+  },
+  {
+    id: "wisdom-crown",
+    name: "Wisdom Crown",
+    minHardPoints: 2500,
+    tone: "gold",
+    description: "Stacked major points on hard questions."
+  },
+  {
+    id: "battle-throne",
+    name: "Battle Throne",
+    minHardPoints: 3800,
+    tone: "sky",
+    description: "Dominated the hardest scripture challenges."
+  }
+];
+const CATEGORY_SELECTIONS = {
+  mixed: {
+    label: "Mixed Testament Showdown",
+    testament: null
+  },
+  old: {
+    label: "Old Testament Only",
+    testament: "Old Testament"
+  },
+  new: {
+    label: "New Testament Only",
+    testament: "New Testament"
+  }
+};
 
 const app = express();
 const server = http.createServer(app);
@@ -96,6 +149,72 @@ const questionBank = [
     explanation: "God sent Jonah to Nineveh, a great city known for its wickedness."
   },
   {
+    id: "joseph-dreams",
+    prompt: "Who interpreted Pharaoh's dreams in Egypt?",
+    choices: ["Joseph", "Daniel", "Aaron", "Isaac"],
+    answerIndex: 0,
+    reference: "Genesis 41:15-16, 25",
+    testament: "Old Testament",
+    category: "Heroes",
+    difficulty: "Medium",
+    explanation: "God gave Joseph wisdom to interpret Pharaoh's dreams."
+  },
+  {
+    id: "mount-sinai",
+    prompt: "On which mountain did Moses receive the Ten Commandments?",
+    choices: ["Carmel", "Zion", "Sinai", "Olivet"],
+    answerIndex: 2,
+    reference: "Exodus 19:20; 20:1",
+    testament: "Old Testament",
+    category: "Law",
+    difficulty: "Easy",
+    explanation: "Moses received the Ten Commandments from God on Mount Sinai."
+  },
+  {
+    id: "queen-esther",
+    prompt: "Which queen risked her life to save her people from destruction?",
+    choices: ["Vashti", "Ruth", "Esther", "Miriam"],
+    answerIndex: 2,
+    reference: "Esther 4:14-16",
+    testament: "Old Testament",
+    category: "Heroes",
+    difficulty: "Easy",
+    explanation: "Esther bravely approached the king to plead for her people."
+  },
+  {
+    id: "elijah-carmel",
+    prompt: "Which prophet called down fire from heaven on Mount Carmel?",
+    choices: ["Elijah", "Elisha", "Isaiah", "Jeremiah"],
+    answerIndex: 0,
+    reference: "1 Kings 18:36-38",
+    testament: "Old Testament",
+    category: "Prophets",
+    difficulty: "Medium",
+    explanation: "God answered Elijah with fire to show that the Lord is the true God."
+  },
+  {
+    id: "nathan-david",
+    prompt: "Which prophet confronted King David after his sin with Bathsheba?",
+    choices: ["Nathan", "Gad", "Elisha", "Amos"],
+    answerIndex: 0,
+    reference: "2 Samuel 12:1-7",
+    testament: "Old Testament",
+    category: "Prophets",
+    difficulty: "Hard",
+    explanation: "Nathan confronted David with a parable that exposed his sin."
+  },
+  {
+    id: "hilkiah-law",
+    prompt: "Which high priest found the Book of the Law during King Josiah's reign?",
+    choices: ["Abiathar", "Hilkiah", "Zadok", "Jehoiada"],
+    answerIndex: 1,
+    reference: "2 Kings 22:8",
+    testament: "Old Testament",
+    category: "Kings",
+    difficulty: "Hard",
+    explanation: "Hilkiah found the Book of the Law in the temple during Josiah's reforms."
+  },
+  {
     id: "beatitudes",
     prompt: "On what hill or setting did Jesus famously teach the Beatitudes?",
     choices: ["Mountainside", "Temple court", "Fishing boat", "Upper room"],
@@ -165,6 +284,66 @@ const questionBank = [
     category: "Prophecy",
     difficulty: "Hard",
     explanation: "John saw the New Jerusalem coming down out of heaven from God."
+  },
+  {
+    id: "jesus-birth-town",
+    prompt: "In which town was Jesus born?",
+    choices: ["Bethany", "Bethlehem", "Nazareth", "Jericho"],
+    answerIndex: 1,
+    reference: "Luke 2:4-7",
+    testament: "New Testament",
+    category: "Life of Jesus",
+    difficulty: "Easy",
+    explanation: "Jesus was born in Bethlehem as foretold by the prophets."
+  },
+  {
+    id: "water-to-wine",
+    prompt: "What miracle did Jesus perform first in the Gospel of John?",
+    choices: [
+      "He healed a blind man",
+      "He calmed the storm",
+      "He multiplied bread",
+      "He turned water into wine"
+    ],
+    answerIndex: 3,
+    reference: "John 2:1-11",
+    testament: "New Testament",
+    category: "Miracles",
+    difficulty: "Medium",
+    explanation: "At Cana, Jesus turned water into wine as His first recorded sign in John's Gospel."
+  },
+  {
+    id: "doubting-thomas",
+    prompt: "Which disciple said he needed to see Jesus' wounds before believing?",
+    choices: ["Peter", "Thomas", "Andrew", "Matthew"],
+    answerIndex: 1,
+    reference: "John 20:24-29",
+    testament: "New Testament",
+    category: "Disciples",
+    difficulty: "Easy",
+    explanation: "Thomas doubted at first, then confessed Jesus as Lord and God."
+  },
+  {
+    id: "philip-eunuch",
+    prompt: "Who explained Isaiah to the Ethiopian eunuch before baptizing him?",
+    choices: ["Philip", "Peter", "Paul", "John Mark"],
+    answerIndex: 0,
+    reference: "Acts 8:30-38",
+    testament: "New Testament",
+    category: "Early Church",
+    difficulty: "Medium",
+    explanation: "Philip explained the Scriptures and then baptized the Ethiopian believer."
+  },
+  {
+    id: "onesimus-letter",
+    prompt: "To whom did Paul write about the runaway slave Onesimus?",
+    choices: ["Titus", "Timothy", "Philemon", "Silas"],
+    answerIndex: 2,
+    reference: "Philemon 1:10-12",
+    testament: "New Testament",
+    category: "Letters",
+    difficulty: "Hard",
+    explanation: "Paul wrote to Philemon, asking him to welcome Onesimus as a brother in Christ."
   }
 ];
 
@@ -172,8 +351,38 @@ function randomChoiceId() {
   return crypto.randomUUID();
 }
 
-function createQuestionSet() {
-  return shuffle(questionBank).slice(0, 10).map((question) => ({
+function normalizeCategorySelection(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return CATEGORY_SELECTIONS[normalized] ? normalized : DEFAULT_CATEGORY_SELECTION;
+}
+
+function getCategoryConfig(categorySelection) {
+  return CATEGORY_SELECTIONS[normalizeCategorySelection(categorySelection)];
+}
+
+function getDifficultyScoring(difficulty) {
+  return DIFFICULTY_SCORING[difficulty] || DIFFICULTY_SCORING.Medium;
+}
+
+function getUnlockedHardRewards(hardScore) {
+  return HARD_REWARD_TIERS.filter((reward) => hardScore >= reward.minHardPoints);
+}
+
+function filterQuestionsByCategory(categorySelection) {
+  const { testament } = getCategoryConfig(categorySelection);
+  if (!testament) {
+    return questionBank;
+  }
+  return questionBank.filter((question) => question.testament === testament);
+}
+
+function createQuestionSet(categorySelection = DEFAULT_CATEGORY_SELECTION) {
+  const pool = filterQuestionsByCategory(categorySelection);
+  if (pool.length < QUESTIONS_PER_GAME) {
+    throw new Error("Not enough questions exist for that category selection.");
+  }
+
+  return shuffle(pool).slice(0, QUESTIONS_PER_GAME).map((question) => ({
     ...question,
     roundId: randomChoiceId()
   }));
@@ -212,13 +421,18 @@ function buildPlayer(name) {
     streak: 0,
     joinedAt: Date.now(),
     connected: true,
+    hardScore: 0,
+    hardCorrectCount: 0,
+    hardRewards: [],
+    latestRewards: [],
     lastDelta: 0,
     lastAnswerCorrect: null,
     selectedAnswerIndex: null
   };
 }
 
-function buildSession() {
+function buildSession(categorySelection = DEFAULT_CATEGORY_SELECTION) {
+  const selectedCategory = normalizeCategorySelection(categorySelection);
   return {
     pin: generatePin(),
     hostAuthKey: crypto.randomUUID(),
@@ -233,7 +447,8 @@ function buildSession() {
     answerBreakdown: null,
     roundAnswers: new Map(),
     players: new Map(),
-    questions: createQuestionSet()
+    selectedCategory,
+    questions: createQuestionSet(selectedCategory)
   };
 }
 
@@ -258,6 +473,10 @@ function getSortedPlayers(session) {
       name: player.name,
       score: player.score,
       streak: player.streak,
+      hardScore: player.hardScore,
+      hardCorrectCount: player.hardCorrectCount,
+      hardRewards: player.hardRewards,
+      latestRewards: player.latestRewards,
       connected: player.connected,
       lastDelta: player.lastDelta,
       lastAnswerCorrect: player.lastAnswerCorrect,
@@ -311,12 +530,41 @@ function clearResumeIfInvalid(socket, message) {
   send(socket, { type: "session:clear-resume", message });
 }
 
-function createSession(socket) {
-  const session = buildSession();
+function createSession(socket, categorySelection) {
+  let session = null;
+  try {
+    session = buildSession(categorySelection);
+  } catch (_error) {
+    sendError(socket, "That testament category is not ready yet. Try another selection.");
+    return;
+  }
   session.hostSocketId = socket.id;
   session.hostConnected = true;
   sessions.set(session.pin, session);
   setSocketMeta(socket, { role: "host", pin: session.pin });
+  broadcastSession(session);
+}
+
+function updateCategory(socket, categorySelection) {
+  const session = sessions.get(socket.meta.pin);
+  if (!session || socket.meta.role !== "host") {
+    return;
+  }
+
+  if (session.status !== "lobby") {
+    sendError(socket, "Change the testament category before the game starts.");
+    return;
+  }
+
+  const normalizedCategory = normalizeCategorySelection(categorySelection);
+  try {
+    session.selectedCategory = normalizedCategory;
+    session.questions = createQuestionSet(normalizedCategory);
+  } catch (_error) {
+    sendError(socket, "That testament category is not ready yet. Try another selection.");
+    return;
+  }
+
   broadcastSession(session);
 }
 
@@ -400,6 +648,7 @@ function resetPlayerRoundState(player) {
   player.lastDelta = 0;
   player.lastAnswerCorrect = null;
   player.selectedAnswerIndex = null;
+  player.latestRewards = [];
 }
 
 function beginQuestion(session, nextIndex) {
@@ -437,9 +686,26 @@ function startGame(socket) {
   beginQuestion(session, 0);
 }
 
-function scoreAnswer(session, submittedAt) {
+function scoreAnswer(session, question, submittedAt) {
+  const scoring = getDifficultyScoring(question.difficulty);
   const remaining = Math.max(session.timerEndsAt - submittedAt, 0);
-  return 600 + Math.round((remaining / QUESTION_DURATION_MS) * 400);
+  return scoring.basePoints + Math.round((remaining / QUESTION_DURATION_MS) * scoring.speedBonusPoints);
+}
+
+function awardHardRewards(player, pointsAwarded) {
+  player.hardScore += pointsAwarded;
+  player.hardCorrectCount += 1;
+
+  const unlockedRewards = getUnlockedHardRewards(player.hardScore);
+  const newRewards = unlockedRewards.filter(
+    (reward) => !player.hardRewards.some((existingReward) => existingReward.id === reward.id)
+  );
+
+  if (newRewards.length > 0) {
+    player.hardRewards = [...player.hardRewards, ...newRewards];
+  }
+
+  player.latestRewards = newRewards;
 }
 
 function revealQuestion(pin) {
@@ -506,7 +772,7 @@ function restartGame(socket) {
   }
 
   clearRoundTimer(session.pin);
-  session.questions = createQuestionSet();
+  session.questions = createQuestionSet(session.selectedCategory);
   session.status = "lobby";
   session.currentQuestionIndex = -1;
   session.questionStartedAt = null;
@@ -517,6 +783,10 @@ function restartGame(socket) {
   for (const player of session.players.values()) {
     player.score = 0;
     player.streak = 0;
+    player.hardScore = 0;
+    player.hardCorrectCount = 0;
+    player.hardRewards = [];
+    player.latestRewards = [];
     resetPlayerRoundState(player);
   }
 
@@ -547,9 +817,12 @@ function submitAnswer(socket, answerIndex) {
 
   const submittedAt = Date.now();
   const isCorrect = normalizedIndex === question.answerIndex;
-  const pointsAwarded = isCorrect ? scoreAnswer(session, submittedAt) : 0;
+  const pointsAwarded = isCorrect ? scoreAnswer(session, question, submittedAt) : 0;
 
   player.score += pointsAwarded;
+  if (isCorrect && question.difficulty === "Hard") {
+    awardHardRewards(player, pointsAwarded);
+  }
   session.roundAnswers.set(player.id, {
     answerIndex: normalizedIndex,
     isCorrect,
@@ -616,13 +889,18 @@ function buildQuestionState(session) {
     return null;
   }
 
+  const scoring = getDifficultyScoring(question.difficulty);
+
   const base = {
     id: question.id,
     prompt: question.prompt,
     choices: question.choices,
     category: question.category,
     difficulty: question.difficulty,
-    testament: question.testament
+    testament: question.testament,
+    basePoints: scoring.basePoints,
+    speedBonusPoints: scoring.speedBonusPoints,
+    maxPoints: scoring.basePoints + scoring.speedBonusPoints
   };
 
   if (session.status === "question") {
@@ -661,6 +939,8 @@ function buildPayloadForSocket(session, socket) {
       pin: session.pin,
       status: session.status,
       hostConnected: session.hostConnected,
+      selectedCategory: session.selectedCategory,
+      categoryLabel: getCategoryConfig(session.selectedCategory).label,
       totalQuestions: session.questions.length,
       currentQuestionIndex: session.currentQuestionIndex,
       questionNumber: session.currentQuestionIndex + 1,
@@ -678,6 +958,10 @@ function buildPayloadForSocket(session, socket) {
             id: selfPlayer.id,
             name: selfPlayer.name,
             score: selfPlayer.score,
+            hardScore: selfPlayer.hardScore,
+            hardCorrectCount: selfPlayer.hardCorrectCount,
+            hardRewards: selfPlayer.hardRewards,
+            latestRewards: selfPlayer.latestRewards,
             rank: selfRank,
             hasAnswered: session.roundAnswers.has(selfPlayer.id),
             selectedAnswerIndex:
@@ -776,7 +1060,10 @@ wss.on("connection", (socket) => {
 
     switch (message.type) {
       case "host:create-session":
-        createSession(socket);
+        createSession(socket, message.categorySelection);
+        break;
+      case "host:update-category":
+        updateCategory(socket, message.categorySelection);
         break;
       case "host:start-game":
         startGame(socket);

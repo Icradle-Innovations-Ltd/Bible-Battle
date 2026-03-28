@@ -21,9 +21,11 @@ Then open `http://localhost:3000`.
 ## What’s included
 
 - Host lobby with launch controls
+- Old Testament / New Testament category selection
 - Player join by PIN and name
 - 10 Bible multiple-choice questions
 - Real-time answers over WebSockets
-- Automatic scoring with speed bonus
+- Automatic scoring with Easy / Medium / Hard point weights plus speed bonus
+- Visual hard-mode badges for standout scores on difficult questions
 - Reveal screens with scripture references
 - Final leaderboard and replay button

@@ -261,6 +261,12 @@ button {
   margin-top: 1.5rem;
 }
 
+.setup-block {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1.2rem;
+}
+
 .join-panel {
   display: flex;
   flex-direction: column;
@@ -279,7 +285,8 @@ button {
 .button,
 .ghost-button,
 .answer-button,
-.icon-button {
+.icon-button,
+.category-option {
   border: none;
   border-radius: 1.05rem;
   transition:
@@ -291,7 +298,8 @@ button {
 .button:hover,
 .ghost-button:hover,
 .answer-button:hover,
-.icon-button:hover {
+.icon-button:hover,
+.category-option:hover {
   transform: translateY(-2px);
 }
 
@@ -323,10 +331,46 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.category-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.category-option {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  text-align: left;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.category-option.active {
+  background:
+    linear-gradient(135deg, rgba(247, 201, 92, 0.24), rgba(96, 165, 250, 0.16)),
+    rgba(255, 255, 255, 0.08);
+  border-color: rgba(247, 201, 92, 0.42);
+  box-shadow: 0 18px 34px rgba(247, 201, 92, 0.12);
+}
+
+.category-option-title {
+  font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
+  font-size: 1.05rem;
+}
+
+.category-option-copy {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
 .button:disabled,
 .ghost-button:disabled,
 .answer-button:disabled,
-.icon-button:disabled {
+.icon-button:disabled,
+.category-option:disabled {
   cursor: not-allowed;
   opacity: 0.5;
   transform: none;
@@ -627,6 +671,66 @@ button {
   border: 1px solid rgba(247, 201, 92, 0.18);
 }
 
+.reward-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.1rem;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.16);
+}
+
+.reward-card-highlight {
+  margin-bottom: 1rem;
+  background:
+    linear-gradient(135deg, rgba(247, 201, 92, 0.16), rgba(96, 165, 250, 0.12)),
+    rgba(255, 255, 255, 0.06);
+  border-color: rgba(247, 201, 92, 0.28);
+}
+
+.reward-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.reward-strip.compact {
+  gap: 0.4rem;
+}
+
+.reward-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.reward-badge.compact {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.74rem;
+}
+
+.reward-badge.tone-bronze {
+  color: #ffe7bf;
+  background: rgba(217, 119, 6, 0.18);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.reward-badge.tone-gold {
+  color: #fff5c0;
+  background: rgba(247, 201, 92, 0.16);
+  border-color: rgba(247, 201, 92, 0.28);
+}
+
+.reward-badge.tone-sky {
+  color: #d7efff;
+  background: rgba(96, 165, 250, 0.16);
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
 .winner-panel {
   min-height: 22rem;
   background:
@@ -737,7 +841,8 @@ button {
   }
 
   .answer-grid,
-  .podium-grid {
+  .podium-grid,
+  .category-selector {
     grid-template-columns: 1fr;
   }
 
