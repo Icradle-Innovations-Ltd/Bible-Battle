@@ -33,7 +33,7 @@ const PLAY_MODE_OPTIONS = [
   {
     value: "solo",
     label: "Solo Clash",
-    description: "Classic every-player-for-themselves Bible battle."
+    description: "Classic every-player-for-themselves Amen Arena showdown."
   },
   {
     value: "team",
@@ -45,7 +45,7 @@ const TEAM_OPTIONS = [
   {
     value: "auto",
     label: "Auto Team",
-    description: "Let Bible Battle place you on a balanced squad.",
+    description: "Let Amen Arena place you on a balanced squad.",
     tone: "neutral"
   },
   {
@@ -849,7 +849,7 @@ function renderHeader() {
       <div class="brand">
         <div class="brand-mark">+</div>
         <div class="brand-copy">
-          <h1>Bible Battle</h1>
+          <h1>Amen Arena</h1>
           <p>Fast hands. Scripture smarts. Live leaderboard energy.</p>
         </div>
       </div>
@@ -868,7 +868,7 @@ function renderLanding() {
       <article class="panel hero-panel">
         <div>
           <span class="eyebrow">Campus quiz energy</span>
-          <h2>Launch a Bible quiz that feels alive in under a minute.</h2>
+          <h2>Launch Amen Arena and light up the room in under a minute.</h2>
           <p class="hero-subtitle">
             Host a live Kahoot-style battle, let players join with a PIN, race through 10 Bible questions,
             and crown a winner with real-time scoring.
@@ -972,7 +972,7 @@ function renderHostLobby(session) {
           </div>
           <div class="spaced">
             <button class="ghost-button" data-action="copy-link" data-link="${escapeHtml(shareUrl)}">Copy Join Link</button>
-            <button class="button" data-action="start-game" ${session.canStart ? "" : "disabled"}>${session.playMode === "team" ? "Start Team Battle" : "Start Bible Battle"}</button>
+            <button class="button" data-action="start-game" ${session.canStart ? "" : "disabled"}>${session.playMode === "team" ? "Start Team Battle" : "Start Amen Arena"}</button>
           </div>
         </div>
         <div class="chip-row">
@@ -1392,7 +1392,7 @@ function renderFinal(session, isHost) {
               ? `${escapeHtml(session.winningTeam.name)} wins Team Battle`
               : "Team Battle finished"
             : session.winner
-              ? `${escapeHtml(session.winner.name)} wins Bible Battle`
+              ? `${escapeHtml(session.winner.name)} wins Amen Arena`
               : "Battle finished"
         }</h2>
         <p class="panel-intro">
@@ -1500,7 +1500,7 @@ function renderFooterStatus() {
 
 function render() {
   const titleSuffix = state.session?.pin ? ` | Room ${state.session.pin}` : "";
-  document.title = `Bible Battle${titleSuffix}`;
+  document.title = `Amen Arena${titleSuffix}`;
 
   app.innerHTML = `
     <main class="app-shell">
