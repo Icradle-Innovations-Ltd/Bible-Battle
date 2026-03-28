@@ -7,6 +7,7 @@ const CATEGORY_KEY = "bible-battle-last-category";
 const SOUND_MUTED_KEY = "bible-battle-sound-muted";
 const SOUND_VOLUME_KEY = "bible-battle-sound-volume";
 const DEFAULT_SOUND_VOLUME = 0.78;
+const SOUND_PRESET_LEVELS = [25, 50, 75, 100];
 const CATEGORY_OPTIONS = [
   {
     value: "mixed",
@@ -572,6 +573,7 @@ function renderSoundControls() {
   const soundPercent = Math.round(state.sound.volume * 100);
   const soundStatus = state.sound.muted ? "Sound Off" : "Sound On";
   const soundActionLabel = state.sound.muted ? "Unmute game sounds" : "Mute game sounds";
+  const activePreset = SOUND_PRESET_LEVELS.find((preset) => preset === soundPercent) ?? null;
 
   return `
     <div class="audio-control" role="group" aria-label="Game sound controls">
@@ -584,19 +586,37 @@ function renderSoundControls() {
       >
         ${soundStatus}
       </button>
-      <label class="audio-slider" for="sound-volume">
-        <span class="audio-slider-label">Volume</span>
-        <input
-          id="sound-volume"
-          class="audio-range"
-          name="sound-volume"
-          type="range"
-          min="0"
-          max="100"
-          step="5"
-          value="${soundPercent}"
-        />
-      </label>
+      <div class="audio-mixer">
+        <label class="audio-slider" for="sound-volume">
+          <span class="audio-slider-label">Volume</span>
+          <input
+            id="sound-volume"
+            class="audio-range"
+            name="sound-volume"
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value="${soundPercent}"
+          />
+        </label>
+        <div class="audio-presets" role="group" aria-label="Quick volume presets">
+          ${SOUND_PRESET_LEVELS.map((preset) => {
+            const activeClass = activePreset === preset ? "active" : "";
+            return `
+              <button
+                class="audio-preset ${activeClass}"
+                data-action="set-sound-preset"
+                data-sound-percent="${preset}"
+                type="button"
+                aria-pressed="${activePreset === preset ? "true" : "false"}"
+              >
+                ${preset}%
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1182,6 +1202,17 @@ app.addEventListener("input", (event) => {
   }
 });
 
+app.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (target.name === "sound-volume") {
+    render();
+  }
+});
+
 app.addEventListener("submit", (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) {
@@ -1238,6 +1269,17 @@ app.addEventListener("click", async (event) => {
       setSoundMuted(!state.sound.muted);
       render();
       break;
+    case "set-sound-preset": {
+      const soundPercent = Number(actionTarget.dataset.soundPercent);
+      if (!Number.isFinite(soundPercent)) {
+        break;
+      }
+
+      setSoundVolume(soundPercent / 100);
+      setSoundMuted(false);
+      render();
+      break;
+    }
     case "focus-join": {
       const pinInput = document.getElementById("pin");
       pinInput?.focus();

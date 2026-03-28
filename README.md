@@ -29,6 +29,6 @@ Then open `http://localhost:3000`.
 - Visual hard-mode badges for standout scores on difficult questions
 - Synthesized sound effects for correct answers, incorrect answers, and badge unlocks
 - Game-event sounds for joining a lobby and launching a round
-- Persistent sound toggle and volume control for players who want quieter gameplay
+- Persistent sound toggle, fine-grained volume slider, and quick 25/50/75/100 presets
 - Reveal screens with scripture references
 - Final leaderboard and replay button

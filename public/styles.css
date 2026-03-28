@@ -183,6 +183,11 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.audio-mixer {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .audio-toggle {
   border: none;
   border-radius: 999px;
@@ -220,6 +225,38 @@ button {
   accent-color: var(--gold);
   cursor: pointer;
   background: transparent;
+}
+
+.audio-presets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.audio-preset {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.74rem;
+  font-weight: 700;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.audio-preset:hover {
+  transform: translateY(-1px);
+}
+
+.audio-preset.active {
+  color: #091221;
+  background: linear-gradient(135deg, var(--gold), #fff0b2);
+  border-color: rgba(247, 201, 92, 0.55);
+  box-shadow: 0 12px 20px rgba(247, 201, 92, 0.18);
 }
 
 .hero-grid,
@@ -918,14 +955,23 @@ button {
   .audio-control {
     width: 100%;
     justify-content: space-between;
+    border-radius: 1.25rem;
+  }
+
+  .audio-mixer {
+    flex: 1;
+    min-width: 0;
   }
 
   .audio-slider {
-    flex: 1;
     justify-content: flex-end;
   }
 
   .audio-range {
     width: min(8rem, 42vw);
+  }
+
+  .audio-presets {
+    justify-content: flex-end;
   }
 }
