@@ -4,6 +4,9 @@ const ANSWER_LABELS = ["A", "B", "C", "D"];
 const RESUME_KEY = "bible-battle-resume";
 const NAME_KEY = "bible-battle-last-name";
 const CATEGORY_KEY = "bible-battle-last-category";
+const SOUND_MUTED_KEY = "bible-battle-sound-muted";
+const SOUND_VOLUME_KEY = "bible-battle-sound-volume";
+const DEFAULT_SOUND_VOLUME = 0.78;
 const CATEGORY_OPTIONS = [
   {
     value: "mixed",
@@ -25,12 +28,35 @@ const CATEGORY_OPTIONS = [
 const app = document.getElementById("app");
 const urlParams = new URLSearchParams(window.location.search);
 
+function loadSoundMutedPreference() {
+  return window.localStorage.getItem(SOUND_MUTED_KEY) === "true";
+}
+
+function loadSoundVolumePreference() {
+  const storedValue = window.localStorage.getItem(SOUND_VOLUME_KEY);
+  if (storedValue === null) {
+    return DEFAULT_SOUND_VOLUME;
+  }
+
+  const rawValue = Number(storedValue);
+  if (Number.isFinite(rawValue) && rawValue >= 0 && rawValue <= 1) {
+    return rawValue;
+  }
+
+  return DEFAULT_SOUND_VOLUME;
+}
+
 const state = {
   socket: null,
   connected: false,
   role: "guest",
   session: null,
   audioContext: null,
+  audioMasterGain: null,
+  sound: {
+    muted: loadSoundMutedPreference(),
+    volume: loadSoundVolumePreference()
+  },
   playedAnswerSignals: new Set(),
   playedEventSignals: new Set(),
   playedRewardSignals: new Set(),
@@ -86,6 +112,46 @@ function saveCategorySelection(categorySelection) {
   window.localStorage.setItem(CATEGORY_KEY, categorySelection);
 }
 
+function persistSoundPreferences() {
+  window.localStorage.setItem(SOUND_MUTED_KEY, String(state.sound.muted));
+  window.localStorage.setItem(SOUND_VOLUME_KEY, String(state.sound.volume));
+}
+
+function getEffectiveSoundVolume() {
+  if (state.sound.muted) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, state.sound.volume));
+}
+
+function syncAudioOutputLevel() {
+  if (!state.audioContext || !state.audioMasterGain) {
+    return;
+  }
+
+  state.audioMasterGain.gain.setValueAtTime(
+    getEffectiveSoundVolume(),
+    state.audioContext.currentTime
+  );
+}
+
+function setSoundMuted(muted) {
+  state.sound.muted = Boolean(muted);
+  if (!state.sound.muted && state.sound.volume <= 0) {
+    state.sound.volume = DEFAULT_SOUND_VOLUME;
+  }
+  persistSoundPreferences();
+  syncAudioOutputLevel();
+}
+
+function setSoundVolume(volume) {
+  const nextVolume = Math.max(0, Math.min(1, volume));
+  state.sound.volume = nextVolume;
+  persistSoundPreferences();
+  syncAudioOutputLevel();
+}
+
 function unlockAudio() {
   const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextConstructor) {
@@ -95,6 +161,13 @@ function unlockAudio() {
   if (!state.audioContext) {
     state.audioContext = new AudioContextConstructor();
   }
+
+  if (!state.audioMasterGain) {
+    state.audioMasterGain = state.audioContext.createGain();
+    state.audioMasterGain.connect(state.audioContext.destination);
+  }
+
+  syncAudioOutputLevel();
 
   if (state.audioContext.state === "suspended") {
     state.audioContext.resume().catch(() => {});
@@ -115,7 +188,7 @@ function scheduleTone(audioContext, frequency, startTime, duration, peakGain, ty
   gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
   oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
+  gainNode.connect(state.audioMasterGain || audioContext.destination);
 
   oscillator.start(startTime);
   oscillator.stop(startTime + duration);
@@ -495,6 +568,39 @@ function renderCategorySelector(selectedCategory) {
   `;
 }
 
+function renderSoundControls() {
+  const soundPercent = Math.round(state.sound.volume * 100);
+  const soundStatus = state.sound.muted ? "Sound Off" : "Sound On";
+  const soundActionLabel = state.sound.muted ? "Unmute game sounds" : "Mute game sounds";
+
+  return `
+    <div class="audio-control" role="group" aria-label="Game sound controls">
+      <button
+        class="audio-toggle ${state.sound.muted ? "muted" : ""}"
+        data-action="toggle-sound"
+        type="button"
+        aria-pressed="${state.sound.muted ? "true" : "false"}"
+        aria-label="${soundActionLabel}"
+      >
+        ${soundStatus}
+      </button>
+      <label class="audio-slider" for="sound-volume">
+        <span class="audio-slider-label">Volume</span>
+        <input
+          id="sound-volume"
+          class="audio-range"
+          name="sound-volume"
+          type="range"
+          min="0"
+          max="100"
+          step="5"
+          value="${soundPercent}"
+        />
+      </label>
+    </div>
+  `;
+}
+
 function renderHeader() {
   const liveText = state.connected ? "Live sync ready" : "Reconnecting...";
   const sessionPin = state.session?.pin
@@ -512,6 +618,7 @@ function renderHeader() {
       </div>
       <div class="stats-row">
         ${sessionPin}
+        ${renderSoundControls()}
         <span class="status-pill"><strong>Status</strong> ${escapeHtml(liveText)}</span>
       </div>
     </header>
@@ -1069,6 +1176,10 @@ app.addEventListener("input", (event) => {
     state.join.name = target.value.slice(0, 18);
     window.localStorage.setItem(NAME_KEY, state.join.name);
   }
+
+  if (target.name === "sound-volume") {
+    setSoundVolume(Number(target.value) / 100);
+  }
 });
 
 app.addEventListener("submit", (event) => {
@@ -1123,6 +1234,10 @@ app.addEventListener("click", async (event) => {
       }
       break;
     }
+    case "toggle-sound":
+      setSoundMuted(!state.sound.muted);
+      render();
+      break;
     case "focus-join": {
       const pinInput = document.getElementById("pin");
       pinInput?.focus();

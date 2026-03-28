@@ -173,6 +173,55 @@ button {
   color: var(--text);
 }
 
+.audio-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.6rem 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.audio-toggle {
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 0.8rem;
+  font-weight: 700;
+  color: #091221;
+  background: linear-gradient(135deg, var(--mint), #c6fff0);
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.audio-toggle.muted {
+  color: #fff1f4;
+  background: linear-gradient(135deg, rgba(251, 113, 133, 0.72), rgba(251, 113, 133, 0.4));
+}
+
+.audio-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+}
+
+.audio-slider-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.audio-range {
+  width: 7.25rem;
+  accent-color: var(--gold);
+  cursor: pointer;
+  background: transparent;
+}
+
 .hero-grid,
 .content-grid,
 .question-layout,
@@ -299,7 +348,8 @@ button {
 .ghost-button:hover,
 .answer-button:hover,
 .icon-button:hover,
-.category-option:hover {
+.category-option:hover,
+.audio-toggle:hover {
   transform: translateY(-2px);
 }
 
@@ -863,5 +913,19 @@ button {
   .question-panel h2,
   .winner-panel h2 {
     font-size: clamp(2rem, 10vw, 3rem);
+  }
+
+  .audio-control {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .audio-slider {
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .audio-range {
+    width: min(8rem, 42vw);
   }
 }
