@@ -1,0 +1,774 @@
+const QUESTION_DURATION_MS = 20_000;
+const ANSWER_TONES = ["tone-a", "tone-b", "tone-c", "tone-d"];
+const ANSWER_LABELS = ["A", "B", "C", "D"];
+const RESUME_KEY = "bible-battle-resume";
+const NAME_KEY = "bible-battle-last-name";
+
+const app = document.getElementById("app");
+const urlParams = new URLSearchParams(window.location.search);
+
+const state = {
+  socket: null,
+  connected: false,
+  role: "guest",
+  session: null,
+  join: {
+    pin: (urlParams.get("pin") || "").trim(),
+    name: window.localStorage.getItem(NAME_KEY) || ""
+  },
+  toast: null,
+  lastToastAt: 0
+};
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function loadResume() {
+  try {
+    const stored = window.sessionStorage.getItem(RESUME_KEY);
+    if (!stored) {
+      return null;
+    }
+    const parsed = JSON.parse(stored);
+    if (!parsed?.pin || !parsed?.role || !parsed?.authKey) {
+      return null;
+    }
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveResume(payload) {
+  if (!payload?.pin || !payload?.role || !payload?.authKey) {
+    return;
+  }
+  window.sessionStorage.setItem(RESUME_KEY, JSON.stringify(payload));
+}
+
+function clearResume() {
+  window.sessionStorage.removeItem(RESUME_KEY);
+}
+
+function showToast(message) {
+  state.toast = message;
+  state.lastToastAt = Date.now();
+  render();
+}
+
+function maybeHideToast() {
+  if (state.toast && Date.now() - state.lastToastAt > 3200) {
+    state.toast = null;
+    render();
+  }
+}
+
+function connectSocket() {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${protocol}://${window.location.host}`);
+  state.socket = socket;
+
+  socket.addEventListener("open", () => {
+    state.connected = true;
+    render();
+
+    const resume = loadResume();
+    if (resume) {
+      sendMessage({
+        type: "client:resume",
+        pin: resume.pin,
+        role: resume.role,
+        authKey: resume.authKey
+      });
+    }
+  });
+
+  socket.addEventListener("close", () => {
+    state.connected = false;
+    render();
+    window.setTimeout(() => {
+      if (!state.connected) {
+        connectSocket();
+      }
+    }, 1500);
+  });
+
+  socket.addEventListener("message", (event) => {
+    let message = null;
+    try {
+      message = JSON.parse(event.data);
+    } catch (_error) {
+      return;
+    }
+
+    switch (message.type) {
+      case "server:ready":
+        render();
+        break;
+      case "session:state":
+        state.role = message.role;
+        state.session = message.session;
+        saveResume(message.resume);
+        render();
+        break;
+      case "session:error":
+        showToast(message.message);
+        break;
+      case "session:ended":
+        clearResume();
+        state.role = "guest";
+        state.session = null;
+        showToast(message.message);
+        render();
+        break;
+      case "session:clear-resume":
+        clearResume();
+        state.role = "guest";
+        state.session = null;
+        if (message.message) {
+          showToast(message.message);
+        }
+        render();
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+function sendMessage(payload) {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    showToast("Connection dropped. Reconnecting now...");
+    return;
+  }
+  state.socket.send(JSON.stringify(payload));
+}
+
+function leaveSession() {
+  sendMessage({ type: "client:leave" });
+  clearResume();
+  state.role = "guest";
+  state.session = null;
+  render();
+}
+
+function formatTimeLeft() {
+  if (!state.session?.timerEndsAt) {
+    return { seconds: 0, percent: 0 };
+  }
+  const msLeft = Math.max(state.session.timerEndsAt - Date.now(), 0);
+  return {
+    seconds: Math.ceil(msLeft / 1000),
+    percent: Math.max(0, Math.min(100, (msLeft / QUESTION_DURATION_MS) * 100))
+  };
+}
+
+function ordinal(rank) {
+  if (rank === 1) return "1st";
+  if (rank === 2) return "2nd";
+  if (rank === 3) return "3rd";
+  return `${rank}th`;
+}
+
+function renderHeader() {
+  const liveText = state.connected ? "Live sync ready" : "Reconnecting...";
+  const sessionPin = state.session?.pin
+    ? `<span class="status-pill"><strong>PIN</strong> <span class="mono">${escapeHtml(state.session.pin)}</span></span>`
+    : "";
+
+  return `
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">+</div>
+        <div class="brand-copy">
+          <h1>Bible Battle</h1>
+          <p>Fast hands. Scripture smarts. Live leaderboard energy.</p>
+        </div>
+      </div>
+      <div class="stats-row">
+        ${sessionPin}
+        <span class="status-pill"><strong>Status</strong> ${escapeHtml(liveText)}</span>
+      </div>
+    </header>
+  `;
+}
+
+function renderLanding() {
+  return `
+    <section class="hero-grid">
+      <article class="panel hero-panel">
+        <div>
+          <span class="eyebrow">Campus quiz energy</span>
+          <h2>Launch a Bible quiz that feels alive in under a minute.</h2>
+          <p class="hero-subtitle">
+            Host a live Kahoot-style battle, let players join with a PIN, race through 10 Bible questions,
+            and crown a winner with real-time scoring.
+          </p>
+          <div class="chip-row">
+            <span class="chip">10 rotating questions</span>
+            <span class="chip">Speed bonus scoring</span>
+            <span class="chip">Old + New Testament mix</span>
+            <span class="chip">Mobile-ready join flow</span>
+          </div>
+        </div>
+        <div class="hero-foot">
+          <button class="button" data-action="create-session">Start Host Room</button>
+          <button class="ghost-button" data-action="focus-join">Join With PIN</button>
+        </div>
+      </article>
+      <aside class="panel join-panel">
+        <div>
+          <p class="muted">Player join</p>
+          <h3 class="card-title">Jump into the battle</h3>
+          <p class="panel-intro">Type the game PIN, add your name, and lock in your answers before time runs out.</p>
+        </div>
+        <form class="form-grid" data-form="join">
+          <div class="field">
+            <label for="pin">Game PIN</label>
+            <input id="pin" name="pin" inputmode="numeric" maxlength="6" placeholder="123456" value="${escapeHtml(state.join.pin)}" />
+          </div>
+          <div class="field">
+            <label for="name">Display name</label>
+            <input id="name" name="name" maxlength="18" placeholder="Team Grace" value="${escapeHtml(state.join.name)}" />
+          </div>
+          <button class="button secondary" type="submit">Join Quiz Room</button>
+          <p class="fine-print">Best demo setup: open one host tab and one or more player tabs, or share the LAN URL on the same Wi-Fi.</p>
+        </form>
+      </aside>
+    </section>
+  `;
+}
+
+function renderPlayers(players, emptyText) {
+  if (!players.length) {
+    return `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
+  }
+
+  return `
+    <div class="player-list">
+      ${players
+        .map(
+          (player) => `
+            <div class="player-card ${player.connected ? "" : "offline"}">
+              <div class="player-meta">
+                <span class="player-name">${escapeHtml(player.name)}</span>
+                <span class="subtle">${player.connected ? "Ready to play" : "Offline"}</span>
+              </div>
+              <strong>${player.score} pts</strong>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderHostLobby(session) {
+  const shareUrl = `${window.location.origin}/?pin=${encodeURIComponent(session.pin)}`;
+  return `
+    <section class="content-grid">
+      <article class="panel room-panel span-7">
+        <span class="eyebrow">Host mode</span>
+        <h2>Room is live. Gather your players.</h2>
+        <p class="panel-intro">
+          Share the join link or game PIN, wait for players to pop into the lobby, then launch the battle.
+        </p>
+        <div class="session-pin">
+          <div class="pin-box">
+            <span class="pin-label">Game PIN</span>
+            <span class="pin-value mono">${escapeHtml(session.pin)}</span>
+          </div>
+          <div class="spaced">
+            <button class="ghost-button" data-action="copy-link" data-link="${escapeHtml(shareUrl)}">Copy Join Link</button>
+            <button class="button" data-action="start-game" ${session.canStart ? "" : "disabled"}>Start Bible Battle</button>
+          </div>
+        </div>
+        <div class="chip-row">
+          <span class="chip">10 questions</span>
+          <span class="chip">20s timer</span>
+          <span class="chip">Speed bonus points</span>
+          <span class="chip">Live reveal screens</span>
+        </div>
+      </article>
+      <aside class="panel leaderboard-panel span-5">
+        <p class="muted">Lobby roster</p>
+        <h3 class="card-title">${session.connectedCount} ready now</h3>
+        ${renderPlayers(session.players, "Players who join will appear here.")}
+        <div class="align-end" style="margin-top:1rem">
+          <button class="icon-button" data-action="leave-session">Close Room</button>
+        </div>
+      </aside>
+    </section>
+  `;
+}
+
+function renderPlayerLobby(session) {
+  return `
+    <section class="content-grid">
+      <article class="panel room-panel span-7">
+        <span class="eyebrow">Player mode</span>
+        <h2>You're in. Wait for the host to drop the first question.</h2>
+        <p class="panel-intro">
+          Answer quickly, answer accurately, and climb the leaderboard. Each correct answer earns points, and faster answers score higher.
+        </p>
+        <div class="session-pin">
+          <div class="pin-box">
+            <span class="pin-label">Joined as</span>
+            <span class="pin-value" style="font-size:clamp(1.8rem,4vw,3rem);letter-spacing:0.03em">${escapeHtml(session.self?.name || "Player")}</span>
+          </div>
+          <div class="pin-box">
+            <span class="pin-label">Game PIN</span>
+            <span class="pin-value mono" style="font-size:clamp(1.8rem,4vw,3rem)">${escapeHtml(session.pin)}</span>
+          </div>
+        </div>
+        <div class="chip-row">
+          <span class="chip">Rank updates after every question</span>
+          <span class="chip">Scripture references on reveal</span>
+          <span class="chip">Hosted live</span>
+        </div>
+      </article>
+      <aside class="panel leaderboard-panel span-5">
+        <p class="muted">Who is in the room?</p>
+        <h3 class="card-title">${session.playerCount} players joined</h3>
+        ${renderPlayers(session.players, "Waiting for the first player to join.")}
+        <div class="align-end" style="margin-top:1rem">
+          <button class="icon-button" data-action="leave-session">Leave Room</button>
+        </div>
+      </aside>
+    </section>
+  `;
+}
+
+function renderTimer() {
+  const { seconds, percent } = formatTimeLeft();
+  return `
+    <div class="timer-shell">
+      <div class="timer-value mono">${seconds}s</div>
+      <div class="timer-bar">
+        <div class="timer-progress" style="width:${percent}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderQuestionCard(session, isHost) {
+  const question = session.question;
+  const self = session.self;
+
+  return `
+    <article class="panel question-panel span-8">
+      <div class="question-header">
+        <div>
+          <span class="eyebrow">Question ${session.questionNumber} of ${session.totalQuestions}</span>
+          <h2>${escapeHtml(question.prompt)}</h2>
+          <div class="question-meta">
+            <span class="chip">${escapeHtml(question.testament)}</span>
+            <span class="chip">${escapeHtml(question.category)}</span>
+            <span class="chip">${escapeHtml(question.difficulty)}</span>
+          </div>
+        </div>
+        ${renderTimer()}
+      </div>
+      <div class="answer-grid">
+        ${question.choices
+          .map((choice, index) => {
+            const toneClass = ANSWER_TONES[index] || "";
+            const selected = self?.selectedAnswerIndex === index ? "selected" : "";
+            const disabled = isHost || self?.hasAnswered ? "disabled" : "";
+            return `
+              <button
+                class="answer-button ${toneClass} ${selected}"
+                data-action="answer"
+                data-answer-index="${index}"
+                ${disabled}
+              >
+                <span class="answer-badge">${ANSWER_LABELS[index] || index + 1}</span>
+                <span class="answer-text">${escapeHtml(choice)}</span>
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderQuestionSidebar(session, isHost) {
+  const self = session.self;
+  const statusText = isHost
+    ? `${session.answeredCount}/${session.connectedCount} players have answered`
+    : self?.hasAnswered
+      ? "Answer locked in. Hold tight for the reveal."
+      : "Choose your answer before the timer ends.";
+
+  return `
+    <aside class="panel insight-panel span-4">
+      <div class="metric">
+        <span class="muted">${isHost ? "Live answer count" : "Your status"}</span>
+        <strong>${escapeHtml(statusText)}</strong>
+      </div>
+      ${
+        isHost
+          ? `
+            <div class="metric">
+              <span class="muted">Players in room</span>
+              <strong>${session.playerCount}</strong>
+            </div>
+            <div class="metric">
+              <span class="muted">Room code</span>
+              <strong class="mono">${escapeHtml(session.pin)}</strong>
+            </div>
+          `
+          : `
+            <div class="metric">
+              <span class="muted">Current score</span>
+              <strong>${session.self?.score || 0} pts</strong>
+            </div>
+            <div class="metric">
+              <span class="muted">Current rank</span>
+              <strong>${ordinal(session.self?.rank || session.playerCount || 1)}</strong>
+            </div>
+          `
+      }
+      <div>
+        <p class="muted">Live leaderboard</p>
+        <div class="leaderboard-list">
+          ${session.players
+            .slice(0, 5)
+            .map(
+              (player) => `
+                <div class="leader-row ${player.connected ? "" : "offline"}">
+                  <div class="leader-meta">
+                    <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                    <span class="subtle">${player.connected ? "In play" : "Disconnected"}</span>
+                  </div>
+                  <strong>${player.score}</strong>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
+      <div class="align-end">
+        <button class="icon-button" data-action="leave-session">${isHost ? "Close Room" : "Leave Room"}</button>
+      </div>
+    </aside>
+  `;
+}
+
+function renderRevealQuestion(question, self) {
+  return `
+    <div class="answer-grid">
+      ${question.choices
+        .map((choice, index) => {
+          const toneClass = ANSWER_TONES[index] || "";
+          const correctClass = index === question.answerIndex ? "correct" : "";
+          const selectedClass = self?.selectedAnswerIndex === index ? "selected" : "";
+          const incorrectClass =
+            self?.selectedAnswerIndex === index && index !== question.answerIndex ? "incorrect" : "";
+          return `
+            <div class="answer-button ${toneClass} ${correctClass} ${incorrectClass} ${selectedClass}">
+              <span class="answer-badge">${ANSWER_LABELS[index] || index + 1}</span>
+              <span class="answer-text">${escapeHtml(choice)}</span>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderBreakdown(session) {
+  const totalAnswers = Math.max(session.answeredCount, 1);
+  return `
+    <div class="breakdown-list">
+      ${session.question.choices
+        .map((choice, index) => {
+          const count = session.answerBreakdown?.[index] || 0;
+          const percent = Math.round((count / totalAnswers) * 100);
+          return `
+            <div class="breakdown-row">
+              <div class="spaced" style="justify-content:space-between">
+                <span>${ANSWER_LABELS[index]} · ${escapeHtml(choice)}</span>
+                <span>${count} vote${count === 1 ? "" : "s"}</span>
+              </div>
+              <div class="breakdown-bar">
+                <div class="breakdown-fill" style="width:${percent}%"></div>
+              </div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderLeaderboardRows(players) {
+  return `
+    <div class="leaderboard-list">
+      ${players
+        .map(
+          (player) => `
+            <div class="leader-row ${player.connected ? "" : "offline"}">
+              <div class="leader-meta">
+                <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                <span class="subtle">${player.lastAnswerCorrect ? `+${player.lastDelta} this round` : player.lastAnswerCorrect === false ? "Missed or timed out" : "No round data"}</span>
+              </div>
+              <strong>${player.score} pts</strong>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderReveal(session, isHost) {
+  const self = session.self;
+  const bannerClass = self?.lastAnswerCorrect ? "good" : "bad";
+  const bannerText = self?.lastAnswerCorrect
+    ? `Correct! +${self.lastDelta} points`
+    : self
+      ? "Not this round. Watch the reference and bounce back."
+      : `${session.answeredCount} players locked in answers`;
+
+  return `
+    <section class="result-layout">
+      <article class="panel question-panel span-7">
+        <span class="eyebrow">Answer reveal</span>
+        <h2>${escapeHtml(session.question.prompt)}</h2>
+        ${!isHost ? `<div class="result-banner ${bannerClass}">${escapeHtml(bannerText)}</div>` : ""}
+        ${renderRevealQuestion(session.question, self)}
+        <div class="scripture-card" style="margin-top:1rem">
+          <strong>${escapeHtml(session.question.reference)}</strong>
+          <p class="panel-intro" style="margin:0.55rem 0 0">${escapeHtml(session.question.explanation)}</p>
+        </div>
+      </article>
+      <aside class="panel insight-panel span-5">
+        <div class="metric">
+          <span class="muted">Leaderboard</span>
+          <strong>${session.winner ? escapeHtml(session.winner.name) : "No players yet"}</strong>
+        </div>
+        ${renderBreakdown(session)}
+        ${renderLeaderboardRows(session.players)}
+        ${
+          isHost
+            ? `<div class="align-end"><button class="button" data-action="next-round">${session.questionNumber === session.totalQuestions ? "Show Final Leaderboard" : "Next Question"}</button></div>`
+            : `<div class="align-end"><button class="icon-button" data-action="leave-session">Leave Room</button></div>`
+        }
+      </aside>
+    </section>
+  `;
+}
+
+function renderFinal(session, isHost) {
+  const topThree = session.players.slice(0, 3);
+  const self = session.self;
+  return `
+    <section class="final-layout">
+      <article class="panel winner-panel span-7">
+        <span class="eyebrow">Final results</span>
+        <h2>${session.winner ? `${escapeHtml(session.winner.name)} wins Bible Battle` : "Battle finished"}</h2>
+        <p class="panel-intro">
+          ${session.winner ? `${escapeHtml(session.winner.name)} led the room with ${session.winner.score} points.` : "No winner was recorded for this session."}
+        </p>
+        <div class="chip-row">
+          <span class="winner-stat">Champion score: ${session.winner?.score || 0}</span>
+          ${
+            self
+              ? `<span class="winner-stat">You placed ${ordinal(self.rank || 1)} with ${self.score} points</span>`
+              : `<span class="winner-stat">${session.playerCount} total players</span>`
+          }
+        </div>
+        <div class="podium-grid">
+          ${topThree
+            .map(
+              (player) => `
+                <div class="podium-card">
+                  <span class="podium-rank">#${player.rank}</span>
+                  <strong>${escapeHtml(player.name)}</strong>
+                  <span class="subtle">${player.score} points</span>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </article>
+      <aside class="panel leaderboard-panel span-5">
+        <p class="muted">Full leaderboard</p>
+        <h3 class="card-title">${session.playerCount} players battled</h3>
+        ${renderLeaderboardRows(session.players)}
+        <div class="align-end" style="margin-top:1rem">
+          ${
+            isHost
+              ? `<button class="button" data-action="restart">Play Again</button>`
+              : `<button class="icon-button" data-action="leave-session">Leave Room</button>`
+          }
+        </div>
+      </aside>
+    </section>
+  `;
+}
+
+function renderSession() {
+  const session = state.session;
+  const isHost = state.role === "host";
+
+  if (session.status === "lobby") {
+    return isHost ? renderHostLobby(session) : renderPlayerLobby(session);
+  }
+
+  if (session.status === "question") {
+    return `
+      <section class="question-layout">
+        ${renderQuestionCard(session, isHost)}
+        ${renderQuestionSidebar(session, isHost)}
+      </section>
+    `;
+  }
+
+  if (session.status === "reveal") {
+    return renderReveal(session, isHost);
+  }
+
+  if (session.status === "final") {
+    return renderFinal(session, isHost);
+  }
+
+  return "";
+}
+
+function renderFooterStatus() {
+  if (!state.session) {
+    return `
+      <section class="panel status-panel" style="margin-top:1rem">
+        <span class="muted">MVP stack: Node, WebSockets, responsive frontend, no external database needed.</span>
+        <span class="subtle">Open the same URL on phones or extra tabs on your local network.</span>
+      </section>
+    `;
+  }
+
+  const hostStatus = state.session.hostConnected ? "Host is live" : "Host reconnecting...";
+  return `
+    <section class="panel status-panel" style="margin-top:1rem">
+      <span class="muted">${escapeHtml(hostStatus)}</span>
+      <span class="subtle">${state.session.playerCount} players • ${state.session.totalQuestions} questions</span>
+    </section>
+  `;
+}
+
+function render() {
+  const titleSuffix = state.session?.pin ? ` | Room ${state.session.pin}` : "";
+  document.title = `Bible Battle${titleSuffix}`;
+
+  app.innerHTML = `
+    <main class="app-shell">
+      ${renderHeader()}
+      ${state.session ? renderSession() : renderLanding()}
+      ${renderFooterStatus()}
+    </main>
+    ${state.toast ? `<div class="toast">${escapeHtml(state.toast)}</div>` : ""}
+  `;
+}
+
+app.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (target.name === "pin") {
+    state.join.pin = target.value.replace(/\D+/g, "").slice(0, 6);
+    target.value = state.join.pin;
+  }
+
+  if (target.name === "name") {
+    state.join.name = target.value.slice(0, 18);
+    window.localStorage.setItem(NAME_KEY, state.join.name);
+  }
+});
+
+app.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  if (form.dataset.form === "join") {
+    event.preventDefault();
+    sendMessage({
+      type: "player:join",
+      pin: state.join.pin,
+      name: state.join.name
+    });
+  }
+});
+
+app.addEventListener("click", async (event) => {
+  const actionTarget = event.target.closest("[data-action]");
+  if (!actionTarget) {
+    return;
+  }
+
+  const { action } = actionTarget.dataset;
+
+  switch (action) {
+    case "create-session":
+      sendMessage({ type: "host:create-session" });
+      break;
+    case "focus-join": {
+      const pinInput = document.getElementById("pin");
+      pinInput?.focus();
+      break;
+    }
+    case "start-game":
+      sendMessage({ type: "host:start-game" });
+      break;
+    case "next-round":
+      sendMessage({ type: "host:next-round" });
+      break;
+    case "restart":
+      sendMessage({ type: "host:restart" });
+      break;
+    case "answer":
+      if (state.role === "player" && state.session?.status === "question") {
+        const answerIndex = Number(actionTarget.dataset.answerIndex);
+        sendMessage({ type: "player:submit-answer", answerIndex });
+      }
+      break;
+    case "leave-session":
+      leaveSession();
+      break;
+    case "copy-link": {
+      const link = actionTarget.dataset.link;
+      if (!link) {
+        break;
+      }
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast("Join link copied.");
+      } catch (_error) {
+        showToast(link);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+});
+
+window.setInterval(() => {
+  if (state.session?.status === "question" || state.toast) {
+    maybeHideToast();
+    render();
+  }
+}, 250);
+
+connectSocket();
+render();

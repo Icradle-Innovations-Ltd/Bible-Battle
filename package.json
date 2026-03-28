@@ -1,0 +1,23 @@
+{
+  "name": "bible-battle",
+  "version": "1.0.0",
+  "description": "Kahoot-style Bible quiz MVP for live demos.",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "bible",
+    "quiz",
+    "kahoot",
+    "websocket",
+    "mvp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.1"
+  }
+}
