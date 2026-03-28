@@ -278,6 +278,23 @@ function playGameStartSound(startDelaySeconds = 0) {
   scheduleTone(audioContext, 130.81, startTime, 0.34, 0.026, "sine");
 }
 
+function playFinalBossSound(startDelaySeconds = 0) {
+  const audioContext = unlockAudio();
+  if (!audioContext || audioContext.state !== "running") {
+    return;
+  }
+
+  const startTime = audioContext.currentTime + 0.02 + startDelaySeconds;
+  const riseNotes = [392.0, 523.25, 659.25, 783.99, 1046.5];
+
+  scheduleTone(audioContext, 98.0, startTime, 0.54, 0.03, "sine");
+  scheduleTone(audioContext, 130.81, startTime + 0.08, 0.46, 0.026, "triangle");
+
+  riseNotes.forEach((frequency, index) => {
+    scheduleTone(audioContext, frequency, startTime + index * 0.08, 0.26, 0.032 + index * 0.007);
+  });
+}
+
 function handleGameEventSound(nextSession, previousSession, role) {
   if (!nextSession) {
     return;
@@ -316,6 +333,19 @@ function handleGameEventSound(nextSession, previousSession, role) {
     if (!state.playedEventSignals.has(signal)) {
       state.playedEventSignals.add(signal);
       playGameStartSound();
+    }
+  }
+
+  if (
+    nextSession.status === "question" &&
+    nextSession.question?.isFinalBoss &&
+    previousSession?.pin === nextSession.pin &&
+    previousSession.currentQuestionIndex !== nextSession.currentQuestionIndex
+  ) {
+    const signal = `${nextSession.pin}:final-boss:${nextSession.questionNumber}`;
+    if (!state.playedEventSignals.has(signal)) {
+      state.playedEventSignals.add(signal);
+      playFinalBossSound();
     }
   }
 }
@@ -523,6 +553,27 @@ function renderPointsText(question) {
     return "";
   }
   return `${question.basePoints}-${question.maxPoints} pts`;
+}
+
+function renderFinalBossBanner(question, context = "question") {
+  if (!question?.isFinalBoss) {
+    return "";
+  }
+
+  const copy =
+    context === "final"
+      ? "The crown was decided in a double-points finish built for dramatic comebacks."
+      : context === "reveal"
+        ? "The double-points finale just landed. Watch who stole the leaderboard swing."
+        : question.roundDescription || "Last question. Double points. One final scripture swing for the crown.";
+
+  return `
+    <div class="final-boss-banner ${context}">
+      <span class="final-boss-kicker">${escapeHtml(question.roundLabel || "Final Boss Round")}</span>
+      <strong>${escapeHtml(question.roundSubtitle || "Sudden Glory Round")}</strong>
+      <p>${escapeHtml(copy)}</p>
+    </div>
+  `;
 }
 
 function renderRewardBadges(rewards, compact = false) {
@@ -805,13 +856,13 @@ function renderPlayerLobby(session) {
   `;
 }
 
-function renderTimer() {
+function renderTimer(question) {
   const { seconds, percent } = formatTimeLeft();
   return `
-    <div class="timer-shell">
+    <div class="timer-shell ${question?.isFinalBoss ? "final-boss" : ""}">
       <div class="timer-value mono">${seconds}s</div>
       <div class="timer-bar">
-        <div class="timer-progress" style="width:${percent}%"></div>
+        <div class="timer-progress ${question?.isFinalBoss ? "final-boss" : ""}" style="width:${percent}%"></div>
       </div>
     </div>
   `;
@@ -822,19 +873,21 @@ function renderQuestionCard(session, isHost) {
   const self = session.self;
 
   return `
-    <article class="panel question-panel span-8">
+    <article class="panel question-panel span-8 ${question.isFinalBoss ? "final-boss-panel" : ""}">
+      ${renderFinalBossBanner(question)}
       <div class="question-header">
         <div>
           <span class="eyebrow">Question ${session.questionNumber} of ${session.totalQuestions}</span>
           <h2>${escapeHtml(question.prompt)}</h2>
           <div class="question-meta">
+            ${question.isFinalBoss ? `<span class="chip final-boss-chip">2x Finale</span>` : ""}
             <span class="chip">${escapeHtml(question.testament)}</span>
             <span class="chip">${escapeHtml(question.category)}</span>
             <span class="chip">${escapeHtml(question.difficulty)}</span>
             <span class="chip">${escapeHtml(renderPointsText(question))}</span>
           </div>
         </div>
-        ${renderTimer()}
+        ${renderTimer(question)}
       </div>
       <div class="answer-grid">
         ${question.choices
@@ -869,7 +922,7 @@ function renderQuestionSidebar(session, isHost) {
       : "Choose your answer before the timer ends.";
 
   return `
-    <aside class="panel insight-panel span-4">
+    <aside class="panel insight-panel span-4 ${session.question.isFinalBoss ? "final-boss-panel" : ""}">
       <div class="metric">
         <span class="muted">${isHost ? "Live answer count" : "Your status"}</span>
         <strong>${escapeHtml(statusText)}</strong>
@@ -885,6 +938,16 @@ function renderQuestionSidebar(session, isHost) {
         <strong>${escapeHtml(renderPointsText(session.question))}</strong>
       </div>
       <p class="fine-print" style="margin:0">Base ${session.question.basePoints} points for a correct answer, plus up to ${session.question.speedBonusPoints} speed bonus.</p>
+      ${
+        session.question.isFinalBoss
+          ? `
+            <div class="reward-card final-boss-card">
+              <strong>${escapeHtml(session.question.roundSubtitle || "Sudden Glory Round")}</strong>
+              <p class="fine-print" style="margin:0.45rem 0 0">${escapeHtml(session.question.roundDescription || "Last question. Double points. One final scripture swing for the crown.")}</p>
+            </div>
+          `
+          : ""
+      }
       ${
         session.question.difficulty === "Hard"
           ? `
@@ -1016,9 +1079,13 @@ function renderReveal(session, isHost) {
   const self = session.self;
   const bannerClass = self?.lastAnswerCorrect ? "good" : "bad";
   const bannerText = self?.lastAnswerCorrect
-    ? `Correct! +${self.lastDelta} points`
+    ? session.question.isFinalBoss
+      ? `Final boss cracked! +${self.lastDelta} points`
+      : `Correct! +${self.lastDelta} points`
     : self
-      ? "Not this round. Watch the reference and bounce back."
+      ? session.question.isFinalBoss
+        ? "The final boss got away. Watch the reveal and see who stole the crown."
+        : "Not this round. Watch the reference and bounce back."
       : `${session.answeredCount} players locked in answers`;
   const unlockedRewards =
     session.question.difficulty === "Hard" && self?.latestRewards?.length
@@ -1033,10 +1100,12 @@ function renderReveal(session, isHost) {
 
   return `
     <section class="result-layout">
-      <article class="panel question-panel span-7">
+      <article class="panel question-panel span-7 ${session.question.isFinalBoss ? "final-boss-panel" : ""}">
+        ${renderFinalBossBanner(session.question, "reveal")}
         <span class="eyebrow">Answer reveal</span>
         <h2>${escapeHtml(session.question.prompt)}</h2>
         <div class="chip-row" style="margin-bottom:1rem">
+          ${session.question.isFinalBoss ? `<span class="chip final-boss-chip">2x Finale</span>` : ""}
           <span class="chip">${escapeHtml(session.question.difficulty)}</span>
           <span class="chip">${escapeHtml(renderPointsText(session.question))}</span>
         </div>
@@ -1048,7 +1117,7 @@ function renderReveal(session, isHost) {
           <p class="panel-intro" style="margin:0.55rem 0 0">${escapeHtml(session.question.explanation)}</p>
         </div>
       </article>
-      <aside class="panel insight-panel span-5">
+      <aside class="panel insight-panel span-5 ${session.question.isFinalBoss ? "final-boss-panel" : ""}">
         <div class="metric">
           <span class="muted">Leaderboard</span>
           <strong>${session.winner ? escapeHtml(session.winner.name) : "No players yet"}</strong>
@@ -1060,7 +1129,7 @@ function renderReveal(session, isHost) {
         ${renderLeaderboardRows(session.players)}
         ${
           isHost
-            ? `<div class="align-end"><button class="button" data-action="next-round">${session.questionNumber === session.totalQuestions ? "Show Final Leaderboard" : "Next Question"}</button></div>`
+            ? `<div class="align-end"><button class="button" data-action="next-round">${session.questionNumber === session.totalQuestions ? "Crown the Champion" : "Next Question"}</button></div>`
             : `<div class="align-end"><button class="icon-button" data-action="leave-session">Leave Room</button></div>`
         }
       </aside>
@@ -1073,7 +1142,8 @@ function renderFinal(session, isHost) {
   const self = session.self;
   return `
     <section class="final-layout">
-      <article class="panel winner-panel span-7">
+      <article class="panel winner-panel span-7 ${session.question?.isFinalBoss ? "final-boss-panel" : ""}">
+        ${renderFinalBossBanner(session.question, "final")}
         <span class="eyebrow">Final results</span>
         <h2>${session.winner ? `${escapeHtml(session.winner.name)} wins Bible Battle` : "Battle finished"}</h2>
         <p class="panel-intro">
@@ -1081,6 +1151,7 @@ function renderFinal(session, isHost) {
         </p>
         <div class="chip-row">
           <span class="winner-stat">${escapeHtml(session.categoryLabel)}</span>
+          ${session.question?.isFinalBoss ? `<span class="winner-stat">${escapeHtml(session.question.roundSubtitle || "Final Boss Round")} • ${session.question.pointsMultiplier}x points</span>` : ""}
           <span class="winner-stat">Champion score: ${session.winner?.score || 0}</span>
           ${
             self

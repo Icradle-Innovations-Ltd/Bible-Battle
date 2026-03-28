@@ -26,6 +26,7 @@ Then open `http://localhost:3000`.
 - 10 Bible multiple-choice questions
 - Real-time answers over WebSockets
 - Automatic scoring with Easy / Medium / Hard point weights plus speed bonus
+- Final Boss Round on the last question with double points and a dramatic finish
 - Visual hard-mode badges for standout scores on difficult questions
 - Synthesized sound effects for correct answers, incorrect answers, and badge unlocks
 - Game-event sounds for joining a lobby and launching a round

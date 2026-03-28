@@ -13,6 +13,12 @@ const MAX_PLAYERS = 40;
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const QUESTIONS_PER_GAME = 10;
 const DEFAULT_CATEGORY_SELECTION = "mixed";
+const FINAL_BOSS_CONFIG = {
+  multiplier: 2,
+  label: "Final Boss Round",
+  subtitle: "Sudden Glory Round",
+  description: "Last question. Double points. One final scripture swing for the crown."
+};
 const DIFFICULTY_SCORING = {
   Easy: {
     basePoints: 500,
@@ -364,6 +370,21 @@ function getDifficultyScoring(difficulty) {
   return DIFFICULTY_SCORING[difficulty] || DIFFICULTY_SCORING.Medium;
 }
 
+function isFinalBossQuestion(session, questionIndex = session.currentQuestionIndex) {
+  return questionIndex >= 0 && questionIndex === session.questions.length - 1;
+}
+
+function getRoundScoring(question, isFinalBoss = false) {
+  const scoring = getDifficultyScoring(question.difficulty);
+  const pointsMultiplier = isFinalBoss ? FINAL_BOSS_CONFIG.multiplier : 1;
+  return {
+    basePoints: scoring.basePoints * pointsMultiplier,
+    speedBonusPoints: scoring.speedBonusPoints * pointsMultiplier,
+    maxPoints: (scoring.basePoints + scoring.speedBonusPoints) * pointsMultiplier,
+    pointsMultiplier
+  };
+}
+
 function getUnlockedHardRewards(hardScore) {
   return HARD_REWARD_TIERS.filter((reward) => hardScore >= reward.minHardPoints);
 }
@@ -687,7 +708,7 @@ function startGame(socket) {
 }
 
 function scoreAnswer(session, question, submittedAt) {
-  const scoring = getDifficultyScoring(question.difficulty);
+  const scoring = getRoundScoring(question, isFinalBossQuestion(session));
   const remaining = Math.max(session.timerEndsAt - submittedAt, 0);
   return scoring.basePoints + Math.round((remaining / QUESTION_DURATION_MS) * scoring.speedBonusPoints);
 }
@@ -889,7 +910,8 @@ function buildQuestionState(session) {
     return null;
   }
 
-  const scoring = getDifficultyScoring(question.difficulty);
+  const isFinalBoss = isFinalBossQuestion(session);
+  const scoring = getRoundScoring(question, isFinalBoss);
 
   const base = {
     id: question.id,
@@ -900,7 +922,12 @@ function buildQuestionState(session) {
     testament: question.testament,
     basePoints: scoring.basePoints,
     speedBonusPoints: scoring.speedBonusPoints,
-    maxPoints: scoring.basePoints + scoring.speedBonusPoints
+    maxPoints: scoring.maxPoints,
+    pointsMultiplier: scoring.pointsMultiplier,
+    isFinalBoss,
+    roundLabel: isFinalBoss ? FINAL_BOSS_CONFIG.label : null,
+    roundSubtitle: isFinalBoss ? FINAL_BOSS_CONFIG.subtitle : null,
+    roundDescription: isFinalBoss ? FINAL_BOSS_CONFIG.description : null
   };
 
   if (session.status === "question") {
@@ -944,6 +971,7 @@ function buildPayloadForSocket(session, socket) {
       totalQuestions: session.questions.length,
       currentQuestionIndex: session.currentQuestionIndex,
       questionNumber: session.currentQuestionIndex + 1,
+      isFinalBossRound: isFinalBossQuestion(session),
       timerEndsAt: session.timerEndsAt,
       playerCount: session.players.size,
       connectedCount: activePlayerCount(session),

@@ -606,6 +606,51 @@ button {
   margin-top: 1rem;
 }
 
+.final-boss-banner {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.2rem;
+  background:
+    linear-gradient(135deg, rgba(247, 201, 92, 0.26), rgba(255, 127, 80, 0.18), rgba(96, 165, 250, 0.18)),
+    rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(247, 201, 92, 0.32);
+  box-shadow: 0 22px 38px rgba(247, 201, 92, 0.12);
+}
+
+.final-boss-kicker {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #fff1b8;
+}
+
+.final-boss-banner strong {
+  font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
+  font-size: 1.35rem;
+}
+
+.final-boss-banner p {
+  margin: 0;
+  color: rgba(247, 246, 242, 0.88);
+  line-height: 1.55;
+}
+
+.final-boss-chip {
+  color: #111827;
+  background: linear-gradient(135deg, var(--gold), #fff0b2);
+  border-color: rgba(247, 201, 92, 0.5);
+  font-weight: 800;
+}
+
+.final-boss-panel {
+  background:
+    linear-gradient(160deg, rgba(247, 201, 92, 0.14), rgba(255, 127, 80, 0.1) 40%, rgba(8, 17, 31, 0.94) 100%);
+  border-color: rgba(247, 201, 92, 0.2);
+}
+
 .timer-shell {
   display: grid;
   gap: 0.6rem;
@@ -630,6 +675,10 @@ button {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--mint), var(--gold), var(--coral));
+}
+
+.timer-progress.final-boss {
+  background: linear-gradient(90deg, #fb7185, var(--gold), #fde68a);
 }
 
 .answer-grid {
@@ -771,6 +820,13 @@ button {
   margin-bottom: 1rem;
   background:
     linear-gradient(135deg, rgba(247, 201, 92, 0.16), rgba(96, 165, 250, 0.12)),
+    rgba(255, 255, 255, 0.06);
+  border-color: rgba(247, 201, 92, 0.28);
+}
+
+.final-boss-card {
+  background:
+    linear-gradient(135deg, rgba(251, 113, 133, 0.14), rgba(247, 201, 92, 0.16)),
     rgba(255, 255, 255, 0.06);
   border-color: rgba(247, 201, 92, 0.28);
 }
