@@ -372,7 +372,9 @@ button {
 .ghost-button,
 .answer-button,
 .icon-button,
-.category-option {
+.category-option,
+.mode-option,
+.team-option {
   border: none;
   border-radius: 1.05rem;
   transition:
@@ -386,6 +388,8 @@ button {
 .answer-button:hover,
 .icon-button:hover,
 .category-option:hover,
+.mode-option:hover,
+.team-option:hover,
 .audio-toggle:hover {
   transform: translateY(-2px);
 }
@@ -424,7 +428,23 @@ button {
   gap: 0.8rem;
 }
 
-.category-option {
+.mode-selector,
+.team-selector {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.mode-selector {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-selector {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.category-option,
+.mode-option,
+.team-option {
   display: grid;
   gap: 0.35rem;
   padding: 1rem;
@@ -434,7 +454,9 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.category-option.active {
+.category-option.active,
+.mode-option.active,
+.team-option.active {
   background:
     linear-gradient(135deg, rgba(247, 201, 92, 0.24), rgba(96, 165, 250, 0.16)),
     rgba(255, 255, 255, 0.08);
@@ -442,22 +464,56 @@ button {
   box-shadow: 0 18px 34px rgba(247, 201, 92, 0.12);
 }
 
-.category-option-title {
+.category-option-title,
+.mode-option-title,
+.team-option-title {
   font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
   font-size: 1.05rem;
 }
 
-.category-option-copy {
+.category-option-copy,
+.mode-option-copy,
+.team-option-copy {
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.55;
+}
+
+.team-option.tone-neutral {
+  border-style: dashed;
+}
+
+.team-option.tone-coral.active {
+  background:
+    linear-gradient(135deg, rgba(255, 127, 80, 0.26), rgba(247, 201, 92, 0.12)),
+    rgba(255, 255, 255, 0.08);
+}
+
+.team-option.tone-gold.active {
+  background:
+    linear-gradient(135deg, rgba(247, 201, 92, 0.26), rgba(255, 255, 255, 0.12)),
+    rgba(255, 255, 255, 0.08);
+}
+
+.team-option.tone-sky.active {
+  background:
+    linear-gradient(135deg, rgba(96, 165, 250, 0.24), rgba(247, 201, 92, 0.12)),
+    rgba(255, 255, 255, 0.08);
+}
+
+.team-option.tone-mint.active {
+  background:
+    linear-gradient(135deg, rgba(52, 211, 153, 0.24), rgba(247, 201, 92, 0.12)),
+    rgba(255, 255, 255, 0.08);
 }
 
 .button:disabled,
 .ghost-button:disabled,
 .answer-button:disabled,
 .icon-button:disabled,
-.category-option:disabled {
+.category-option:disabled,
+.mode-option:disabled,
+.team-option:disabled {
   cursor: not-allowed;
   opacity: 0.5;
   transform: none;
@@ -572,6 +628,13 @@ button {
 .leader-meta {
   display: grid;
   gap: 0.18rem;
+}
+
+.stack-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .player-name,
@@ -874,6 +937,74 @@ button {
   border-color: rgba(96, 165, 250, 0.28);
 }
 
+.team-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.team-badge.compact {
+  padding: 0.28rem 0.5rem;
+  font-size: 0.7rem;
+}
+
+.team-badge.tone-neutral {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.team-badge.tone-coral {
+  color: #ffe5db;
+  background: rgba(255, 127, 80, 0.16);
+  border-color: rgba(255, 127, 80, 0.28);
+}
+
+.team-badge.tone-gold {
+  color: #fff5c0;
+  background: rgba(247, 201, 92, 0.16);
+  border-color: rgba(247, 201, 92, 0.28);
+}
+
+.team-badge.tone-sky {
+  color: #d7efff;
+  background: rgba(96, 165, 250, 0.16);
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+.team-badge.tone-mint {
+  color: #d9fff3;
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.28);
+}
+
+.team-row {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.team-row.tone-coral {
+  background: rgba(255, 127, 80, 0.08);
+  border-color: rgba(255, 127, 80, 0.18);
+}
+
+.team-row.tone-gold {
+  background: rgba(247, 201, 92, 0.08);
+  border-color: rgba(247, 201, 92, 0.18);
+}
+
+.team-row.tone-sky {
+  background: rgba(96, 165, 250, 0.08);
+  border-color: rgba(96, 165, 250, 0.18);
+}
+
+.team-row.tone-mint {
+  background: rgba(52, 211, 153, 0.08);
+  border-color: rgba(52, 211, 153, 0.18);
+}
+
 .winner-panel {
   min-height: 22rem;
   background:
@@ -985,7 +1116,9 @@ button {
 
   .answer-grid,
   .podium-grid,
-  .category-selector {
+  .category-selector,
+  .mode-selector,
+  .team-selector {
     grid-template-columns: 1fr;
   }
 

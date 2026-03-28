@@ -4,9 +4,13 @@ const ANSWER_LABELS = ["A", "B", "C", "D"];
 const RESUME_KEY = "bible-battle-resume";
 const NAME_KEY = "bible-battle-last-name";
 const CATEGORY_KEY = "bible-battle-last-category";
+const PLAY_MODE_KEY = "bible-battle-last-play-mode";
+const TEAM_KEY = "bible-battle-last-team";
 const SOUND_MUTED_KEY = "bible-battle-sound-muted";
 const SOUND_VOLUME_KEY = "bible-battle-sound-volume";
 const DEFAULT_SOUND_VOLUME = 0.78;
+const DEFAULT_PLAY_MODE = "solo";
+const DEFAULT_TEAM_SELECTION = "auto";
 const SOUND_PRESET_LEVELS = [25, 50, 75, 100];
 const CATEGORY_OPTIONS = [
   {
@@ -25,9 +29,67 @@ const CATEGORY_OPTIONS = [
     description: "Jesus, disciples, Acts, and the early church."
   }
 ];
+const PLAY_MODE_OPTIONS = [
+  {
+    value: "solo",
+    label: "Solo Clash",
+    description: "Classic every-player-for-themselves Bible battle."
+  },
+  {
+    value: "team",
+    label: "Team Battle",
+    description: "Squads stack points together and race for the win."
+  }
+];
+const TEAM_OPTIONS = [
+  {
+    value: "auto",
+    label: "Auto Team",
+    description: "Let Bible Battle place you on a balanced squad.",
+    tone: "neutral"
+  },
+  {
+    value: "david",
+    label: "Team David",
+    description: "Bold shots and giant-slayer energy.",
+    tone: "coral"
+  },
+  {
+    value: "esther",
+    label: "Team Esther",
+    description: "Calm courage under pressure.",
+    tone: "gold"
+  },
+  {
+    value: "paul",
+    label: "Team Paul",
+    description: "Fast answers and comeback pace.",
+    tone: "sky"
+  },
+  {
+    value: "deborah",
+    label: "Team Deborah",
+    description: "Wisdom, leadership, and clean sweeps.",
+    tone: "mint"
+  }
+];
 
 const app = document.getElementById("app");
 const urlParams = new URLSearchParams(window.location.search);
+
+function loadPlayModeSelection() {
+  const storedValue = String(window.localStorage.getItem(PLAY_MODE_KEY) || "").trim().toLowerCase();
+  return PLAY_MODE_OPTIONS.some((option) => option.value === storedValue)
+    ? storedValue
+    : DEFAULT_PLAY_MODE;
+}
+
+function loadTeamSelection() {
+  const storedValue = String(window.localStorage.getItem(TEAM_KEY) || "").trim().toLowerCase();
+  return TEAM_OPTIONS.some((option) => option.value === storedValue)
+    ? storedValue
+    : DEFAULT_TEAM_SELECTION;
+}
 
 function loadSoundMutedPreference() {
   return window.localStorage.getItem(SOUND_MUTED_KEY) === "true";
@@ -62,11 +124,13 @@ const state = {
   playedEventSignals: new Set(),
   playedRewardSignals: new Set(),
   hostSetup: {
-    categorySelection: window.localStorage.getItem(CATEGORY_KEY) || "mixed"
+    categorySelection: window.localStorage.getItem(CATEGORY_KEY) || "mixed",
+    playModeSelection: loadPlayModeSelection()
   },
   join: {
     pin: (urlParams.get("pin") || "").trim(),
-    name: window.localStorage.getItem(NAME_KEY) || ""
+    name: window.localStorage.getItem(NAME_KEY) || "",
+    teamSelection: loadTeamSelection()
   },
   toast: null,
   lastToastAt: 0
@@ -111,6 +175,16 @@ function clearResume() {
 function saveCategorySelection(categorySelection) {
   state.hostSetup.categorySelection = categorySelection;
   window.localStorage.setItem(CATEGORY_KEY, categorySelection);
+}
+
+function savePlayModeSelection(playModeSelection) {
+  state.hostSetup.playModeSelection = playModeSelection;
+  window.localStorage.setItem(PLAY_MODE_KEY, playModeSelection);
+}
+
+function saveTeamSelection(teamSelection) {
+  state.join.teamSelection = teamSelection;
+  window.localStorage.setItem(TEAM_KEY, teamSelection);
 }
 
 function persistSoundPreferences() {
@@ -486,6 +560,9 @@ function connectSocket() {
         if (message.session?.selectedCategory) {
           saveCategorySelection(message.session.selectedCategory);
         }
+        if (message.role === "host" && message.session?.playMode) {
+          savePlayModeSelection(message.session.playMode);
+        }
         saveResume(message.resume);
         render();
         break;
@@ -620,6 +697,95 @@ function renderCategorySelector(selectedCategory) {
   `;
 }
 
+function renderPlayModeSelector(selectedPlayMode) {
+  return `
+    <div class="mode-selector">
+      ${PLAY_MODE_OPTIONS.map((option) => {
+        const activeClass = selectedPlayMode === option.value ? "active" : "";
+        return `
+          <button
+            class="mode-option ${activeClass}"
+            data-action="select-play-mode"
+            data-play-mode-selection="${option.value}"
+            type="button"
+          >
+            <span class="mode-option-title">${escapeHtml(option.label)}</span>
+            <span class="mode-option-copy">${escapeHtml(option.description)}</span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderTeamSelector(selectedTeamSelection) {
+  return `
+    <div class="team-selector">
+      ${TEAM_OPTIONS.map((option) => {
+        const activeClass = selectedTeamSelection === option.value ? "active" : "";
+        return `
+          <button
+            class="team-option tone-${escapeHtml(option.tone)} ${activeClass}"
+            data-action="select-team"
+            data-team-selection="${option.value}"
+            type="button"
+          >
+            <span class="team-option-title">${escapeHtml(option.label)}</span>
+            <span class="team-option-copy">${escapeHtml(option.description)}</span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderTeamBadge(teamName, teamTone, compact = false) {
+  if (!teamName) {
+    return "";
+  }
+
+  return `
+    <span class="team-badge tone-${escapeHtml(teamTone || "neutral")} ${compact ? "compact" : ""}">
+      ${escapeHtml(teamName)}
+    </span>
+  `;
+}
+
+function getSelfTeam(session) {
+  if (!session?.self?.teamId || !session?.teams?.length) {
+    return null;
+  }
+
+  return session.teams.find((team) => team.id === session.self.teamId) || null;
+}
+
+function renderTeamRows(teams, emptyText) {
+  if (!teams?.length) {
+    return `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
+  }
+
+  return `
+    <div class="leaderboard-list">
+      ${teams
+        .map(
+          (team) => `
+            <div class="leader-row team-row tone-${escapeHtml(team.tone || "neutral")}">
+              <div class="leader-meta">
+                <div class="stack-inline">
+                  <span class="leader-name">#${team.rank}</span>
+                  ${renderTeamBadge(team.name, team.tone, true)}
+                </div>
+                <span class="subtle">${team.connectedCount}/${team.memberCount} players live</span>
+              </div>
+              <strong>${team.score} pts</strong>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderSoundControls() {
   const soundPercent = Math.round(state.sound.volume * 100);
   const soundStatus = state.sound.muted ? "Sound Off" : "Sound On";
@@ -717,6 +883,10 @@ function renderLanding() {
             <p class="muted">Choose the quiz lane before you host</p>
             ${renderCategorySelector(state.hostSetup.categorySelection)}
           </div>
+          <div class="setup-block">
+            <p class="muted">Choose how players compete</p>
+            ${renderPlayModeSelector(state.hostSetup.playModeSelection)}
+          </div>
         </div>
         <div class="hero-foot">
           <button class="button" data-action="create-session">Start Host Room</button>
@@ -738,15 +908,19 @@ function renderLanding() {
             <label for="name">Display name</label>
             <input id="name" name="name" maxlength="18" placeholder="Team Grace" value="${escapeHtml(state.join.name)}" />
           </div>
+          <div class="field">
+            <label>Squad pick</label>
+            ${renderTeamSelector(state.join.teamSelection)}
+          </div>
           <button class="button secondary" type="submit">Join Quiz Room</button>
-          <p class="fine-print">Best demo setup: open one host tab and one or more player tabs, or share the LAN URL on the same Wi-Fi.</p>
+          <p class="fine-print">Best demo setup: open one host tab and one or more player tabs, or share the LAN URL on the same Wi-Fi. Team picks are used instantly when the host enables Team Battle.</p>
         </form>
       </aside>
     </section>
   `;
 }
 
-function renderPlayers(players, emptyText) {
+function renderPlayers(players, emptyText, showTeams = false) {
   if (!players.length) {
     return `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
   }
@@ -758,7 +932,10 @@ function renderPlayers(players, emptyText) {
           (player) => `
             <div class="player-card ${player.connected ? "" : "offline"}">
               <div class="player-meta">
-                <span class="player-name">${escapeHtml(player.name)}</span>
+                <div class="stack-inline">
+                  <span class="player-name">${escapeHtml(player.name)}</span>
+                  ${showTeams ? renderTeamBadge(player.teamName, player.teamTone, true) : ""}
+                </div>
                 <span class="subtle">${player.connected ? "Ready to play" : "Offline"}</span>
               </div>
               <strong>${player.score} pts</strong>
@@ -778,11 +955,15 @@ function renderHostLobby(session) {
         <span class="eyebrow">Host mode</span>
         <h2>Room is live. Gather your players.</h2>
         <p class="panel-intro">
-          Share the join link or game PIN, set the testament lane for this room, then launch the battle.
+          Share the join link or game PIN, set the testament lane and competition mode for this room, then launch the battle.
         </p>
         <div class="setup-block">
           <p class="muted">Selected category</p>
           ${renderCategorySelector(session.selectedCategory)}
+        </div>
+        <div class="setup-block">
+          <p class="muted">Competition mode</p>
+          ${renderPlayModeSelector(session.playMode)}
         </div>
         <div class="session-pin">
           <div class="pin-box">
@@ -791,11 +972,12 @@ function renderHostLobby(session) {
           </div>
           <div class="spaced">
             <button class="ghost-button" data-action="copy-link" data-link="${escapeHtml(shareUrl)}">Copy Join Link</button>
-            <button class="button" data-action="start-game" ${session.canStart ? "" : "disabled"}>Start Bible Battle</button>
+            <button class="button" data-action="start-game" ${session.canStart ? "" : "disabled"}>${session.playMode === "team" ? "Start Team Battle" : "Start Bible Battle"}</button>
           </div>
         </div>
         <div class="chip-row">
           <span class="chip">${escapeHtml(session.categoryLabel)}</span>
+          <span class="chip">${escapeHtml(session.playModeLabel)}</span>
           <span class="chip">10 questions</span>
           <span class="chip">20s timer</span>
           <span class="chip">Difficulty + speed scoring</span>
@@ -803,9 +985,17 @@ function renderHostLobby(session) {
         </div>
       </article>
       <aside class="panel leaderboard-panel span-5">
+        ${
+          session.playMode === "team"
+            ? `
+              <p class="muted">Team leaderboard</p>
+              ${renderTeamRows(session.teams, "Teams appear here when players join.")}
+            `
+            : ""
+        }
         <p class="muted">Lobby roster</p>
         <h3 class="card-title">${session.connectedCount} ready now</h3>
-        ${renderPlayers(session.players, "Players who join will appear here.")}
+        ${renderPlayers(session.players, "Players who join will appear here.", session.playMode === "team")}
         <div class="align-end" style="margin-top:1rem">
           <button class="icon-button" data-action="leave-session">Close Room</button>
         </div>
@@ -815,6 +1005,7 @@ function renderHostLobby(session) {
 }
 
 function renderPlayerLobby(session) {
+  const selfTeam = getSelfTeam(session);
   return `
     <section class="content-grid">
       <article class="panel room-panel span-7">
@@ -836,18 +1027,37 @@ function renderPlayerLobby(session) {
             <span class="pin-label">Category</span>
             <span class="pin-value" style="font-size:clamp(1.15rem,2.2vw,1.55rem);letter-spacing:0.03em">${escapeHtml(session.categoryLabel)}</span>
           </div>
+          ${
+            session.playMode === "team" && selfTeam
+              ? `
+                <div class="pin-box">
+                  <span class="pin-label">Squad</span>
+                  <span class="pin-value" style="font-size:clamp(1.1rem,2vw,1.45rem);letter-spacing:0.03em">${escapeHtml(selfTeam.name)}</span>
+                </div>
+              `
+              : ""
+          }
         </div>
         <div class="chip-row">
           <span class="chip">${escapeHtml(session.categoryLabel)}</span>
+          <span class="chip">${escapeHtml(session.playModeLabel)}</span>
           <span class="chip">Rank updates after every question</span>
           <span class="chip">Scripture references on reveal</span>
           <span class="chip">Hosted live</span>
         </div>
       </article>
       <aside class="panel leaderboard-panel span-5">
+        ${
+          session.playMode === "team"
+            ? `
+              <p class="muted">Team leaderboard</p>
+              ${renderTeamRows(session.teams, "Teams form once players lock in.")}
+            `
+            : ""
+        }
         <p class="muted">Who is in the room?</p>
         <h3 class="card-title">${session.playerCount} players joined</h3>
-        ${renderPlayers(session.players, "Waiting for the first player to join.")}
+        ${renderPlayers(session.players, "Waiting for the first player to join.", session.playMode === "team")}
         <div class="align-end" style="margin-top:1rem">
           <button class="icon-button" data-action="leave-session">Leave Room</button>
         </div>
@@ -915,6 +1125,7 @@ function renderQuestionCard(session, isHost) {
 
 function renderQuestionSidebar(session, isHost) {
   const self = session.self;
+  const selfTeam = getSelfTeam(session);
   const statusText = isHost
     ? `${session.answeredCount}/${session.connectedCount} players have answered`
     : self?.hasAnswered
@@ -931,6 +1142,7 @@ function renderQuestionSidebar(session, isHost) {
         <p class="muted">Category lane</p>
         <div class="chip-row">
           <span class="chip">${escapeHtml(session.categoryLabel)}</span>
+          <span class="chip">${escapeHtml(session.playModeLabel)}</span>
         </div>
       </div>
       <div class="metric">
@@ -938,6 +1150,16 @@ function renderQuestionSidebar(session, isHost) {
         <strong>${escapeHtml(renderPointsText(session.question))}</strong>
       </div>
       <p class="fine-print" style="margin:0">Base ${session.question.basePoints} points for a correct answer, plus up to ${session.question.speedBonusPoints} speed bonus.</p>
+      ${
+        session.playMode === "team"
+          ? `
+            <div class="metric">
+              <span class="muted">${isHost ? "Leading squad" : "Your squad"}</span>
+              <strong>${escapeHtml((isHost ? session.winningTeam?.name : selfTeam?.name) || "Waiting on teams")}</strong>
+            </div>
+          `
+          : ""
+      }
       ${
         session.question.isFinalBoss
           ? `
@@ -981,6 +1203,16 @@ function renderQuestionSidebar(session, isHost) {
             </div>
           `
       }
+      ${
+        session.playMode === "team"
+          ? `
+            <div>
+              <p class="muted">Team leaderboard</p>
+              ${renderTeamRows(session.teams, "Teams will appear here once players join.")}
+            </div>
+          `
+          : ""
+      }
       <div>
         <p class="muted">Live leaderboard</p>
         <div class="leaderboard-list">
@@ -990,7 +1222,10 @@ function renderQuestionSidebar(session, isHost) {
               (player) => `
                 <div class="leader-row ${player.connected ? "" : "offline"}">
                   <div class="leader-meta">
-                    <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                    <div class="stack-inline">
+                      <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                      ${session.playMode === "team" ? renderTeamBadge(player.teamName, player.teamTone, true) : ""}
+                    </div>
                     <span class="subtle">${player.connected ? "In play" : "Disconnected"}</span>
                   </div>
                   <strong>${player.score}</strong>
@@ -1062,7 +1297,10 @@ function renderLeaderboardRows(players) {
           (player) => `
             <div class="leader-row ${player.connected ? "" : "offline"}">
               <div class="leader-meta">
-                <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                <div class="stack-inline">
+                  <span class="leader-name">#${player.rank} ${escapeHtml(player.name)}</span>
+                  ${renderTeamBadge(player.teamName, player.teamTone, true)}
+                </div>
                 ${renderRewardBadges(player.hardRewards, true)}
                 <span class="subtle">${player.lastAnswerCorrect ? `+${player.lastDelta} this round` : player.lastAnswerCorrect === false ? "Missed or timed out" : "No round data"}</span>
               </div>
@@ -1119,12 +1357,14 @@ function renderReveal(session, isHost) {
       </article>
       <aside class="panel insight-panel span-5 ${session.question.isFinalBoss ? "final-boss-panel" : ""}">
         <div class="metric">
-          <span class="muted">Leaderboard</span>
-          <strong>${session.winner ? escapeHtml(session.winner.name) : "No players yet"}</strong>
+          <span class="muted">${session.playMode === "team" ? "Leading squad" : "Leaderboard"}</span>
+          <strong>${session.playMode === "team" ? escapeHtml(session.winningTeam?.name || "No teams yet") : session.winner ? escapeHtml(session.winner.name) : "No players yet"}</strong>
         </div>
         <div class="chip-row">
           <span class="chip">${escapeHtml(session.categoryLabel)}</span>
+          <span class="chip">${escapeHtml(session.playModeLabel)}</span>
         </div>
+        ${session.playMode === "team" ? renderTeamRows(session.teams, "Teams will appear here once players join.") : ""}
         ${renderBreakdown(session)}
         ${renderLeaderboardRows(session.players)}
         ${
@@ -1140,22 +1380,40 @@ function renderReveal(session, isHost) {
 function renderFinal(session, isHost) {
   const topThree = session.players.slice(0, 3);
   const self = session.self;
+  const selfTeam = getSelfTeam(session);
   return `
     <section class="final-layout">
       <article class="panel winner-panel span-7 ${session.question?.isFinalBoss ? "final-boss-panel" : ""}">
         ${renderFinalBossBanner(session.question, "final")}
         <span class="eyebrow">Final results</span>
-        <h2>${session.winner ? `${escapeHtml(session.winner.name)} wins Bible Battle` : "Battle finished"}</h2>
+        <h2>${
+          session.playMode === "team"
+            ? session.winningTeam
+              ? `${escapeHtml(session.winningTeam.name)} wins Team Battle`
+              : "Team Battle finished"
+            : session.winner
+              ? `${escapeHtml(session.winner.name)} wins Bible Battle`
+              : "Battle finished"
+        }</h2>
         <p class="panel-intro">
-          ${session.winner ? `${escapeHtml(session.winner.name)} led the room with ${session.winner.score} points.` : "No winner was recorded for this session."}
+          ${
+            session.playMode === "team"
+              ? session.winningTeam
+                ? `${escapeHtml(session.winningTeam.name)} finished on top, while ${session.winner ? `${escapeHtml(session.winner.name)} was the highest-scoring player in the room.` : "the individual MVP race stayed wide open."}`
+                : "No winning team was recorded for this session."
+              : session.winner
+                ? `${escapeHtml(session.winner.name)} led the room with ${session.winner.score} points.`
+                : "No winner was recorded for this session."
+          }
         </p>
         <div class="chip-row">
           <span class="winner-stat">${escapeHtml(session.categoryLabel)}</span>
+          <span class="winner-stat">${escapeHtml(session.playModeLabel)}</span>
           ${session.question?.isFinalBoss ? `<span class="winner-stat">${escapeHtml(session.question.roundSubtitle || "Final Boss Round")} • ${session.question.pointsMultiplier}x points</span>` : ""}
-          <span class="winner-stat">Champion score: ${session.winner?.score || 0}</span>
+          <span class="winner-stat">${session.playMode === "team" ? `Winning team score: ${session.winningTeam?.score || 0}` : `Champion score: ${session.winner?.score || 0}`}</span>
           ${
             self
-              ? `<span class="winner-stat">You placed ${ordinal(self.rank || 1)} with ${self.score} points</span>`
+              ? `<span class="winner-stat">${session.playMode === "team" && selfTeam ? `${escapeHtml(selfTeam.name)} • ` : ""}You placed ${ordinal(self.rank || 1)} with ${self.score} points</span>`
               : `<span class="winner-stat">${session.playerCount} total players</span>`
           }
         </div>
@@ -1176,8 +1434,10 @@ function renderFinal(session, isHost) {
         </div>
       </article>
       <aside class="panel leaderboard-panel span-5">
-        <p class="muted">Full leaderboard</p>
-        <h3 class="card-title">${session.playerCount} players battled</h3>
+        <p class="muted">${session.playMode === "team" ? "Team leaderboard" : "Full leaderboard"}</p>
+        <h3 class="card-title">${session.playMode === "team" ? `${session.teams.length} squads battled` : `${session.playerCount} players battled`}</h3>
+        ${session.playMode === "team" ? renderTeamRows(session.teams, "Teams will appear here once players join.") : ""}
+        ${session.playMode === "team" ? `<p class="muted" style="margin-top:1rem">Individual leaderboard</p>` : ""}
         ${renderLeaderboardRows(session.players)}
         <div class="align-end" style="margin-top:1rem">
           ${
@@ -1233,7 +1493,7 @@ function renderFooterStatus() {
   return `
     <section class="panel status-panel" style="margin-top:1rem">
       <span class="muted">${escapeHtml(hostStatus)}</span>
-      <span class="subtle">${escapeHtml(state.session.categoryLabel)} • ${state.session.playerCount} players • ${state.session.totalQuestions} questions</span>
+      <span class="subtle">${escapeHtml(state.session.categoryLabel)} • ${escapeHtml(state.session.playModeLabel)} • ${state.session.playerCount} players • ${state.session.totalQuestions} questions</span>
     </section>
   `;
 }
@@ -1297,7 +1557,8 @@ app.addEventListener("submit", (event) => {
     sendMessage({
       type: "player:join",
       pin: state.join.pin,
-      name: state.join.name
+      name: state.join.name,
+      teamSelection: state.join.teamSelection
     });
   }
 });
@@ -1316,7 +1577,8 @@ app.addEventListener("click", async (event) => {
     case "create-session":
       sendMessage({
         type: "host:create-session",
-        categorySelection: state.hostSetup.categorySelection
+        categorySelection: state.hostSetup.categorySelection,
+        playModeSelection: state.hostSetup.playModeSelection
       });
       break;
     case "select-category": {
@@ -1334,6 +1596,33 @@ app.addEventListener("click", async (event) => {
       } else {
         render();
       }
+      break;
+    }
+    case "select-play-mode": {
+      const playModeSelection = actionTarget.dataset.playModeSelection;
+      if (!playModeSelection) {
+        break;
+      }
+
+      savePlayModeSelection(playModeSelection);
+      if (state.role === "host" && state.session?.status === "lobby") {
+        sendMessage({
+          type: "host:update-play-mode",
+          playModeSelection
+        });
+      } else {
+        render();
+      }
+      break;
+    }
+    case "select-team": {
+      const teamSelection = actionTarget.dataset.teamSelection;
+      if (!teamSelection) {
+        break;
+      }
+
+      saveTeamSelection(teamSelection);
+      render();
       break;
     }
     case "toggle-sound":

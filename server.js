@@ -13,6 +13,7 @@ const MAX_PLAYERS = 40;
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const QUESTIONS_PER_GAME = 10;
 const DEFAULT_CATEGORY_SELECTION = "mixed";
+const DEFAULT_PLAY_MODE = "solo";
 const FINAL_BOSS_CONFIG = {
   multiplier: 2,
   label: "Final Boss Round",
@@ -70,6 +71,36 @@ const CATEGORY_SELECTIONS = {
     testament: "New Testament"
   }
 };
+const PLAY_MODES = {
+  solo: {
+    label: "Solo Clash"
+  },
+  team: {
+    label: "Team Battle"
+  }
+};
+const TEAM_OPTIONS = [
+  {
+    id: "david",
+    name: "Team David",
+    tone: "coral"
+  },
+  {
+    id: "esther",
+    name: "Team Esther",
+    tone: "gold"
+  },
+  {
+    id: "paul",
+    name: "Team Paul",
+    tone: "sky"
+  },
+  {
+    id: "deborah",
+    name: "Team Deborah",
+    tone: "mint"
+  }
+];
 
 const app = express();
 const server = http.createServer(app);
@@ -362,12 +393,31 @@ function normalizeCategorySelection(value) {
   return CATEGORY_SELECTIONS[normalized] ? normalized : DEFAULT_CATEGORY_SELECTION;
 }
 
+function normalizePlayMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PLAY_MODES[normalized] ? normalized : DEFAULT_PLAY_MODE;
+}
+
 function getCategoryConfig(categorySelection) {
   return CATEGORY_SELECTIONS[normalizeCategorySelection(categorySelection)];
 }
 
+function getPlayModeConfig(playMode) {
+  return PLAY_MODES[normalizePlayMode(playMode)];
+}
+
 function getDifficultyScoring(difficulty) {
   return DIFFICULTY_SCORING[difficulty] || DIFFICULTY_SCORING.Medium;
+}
+
+function normalizeTeamId(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return TEAM_OPTIONS.some((team) => team.id === normalized) ? normalized : null;
+}
+
+function getTeamConfig(teamId) {
+  const normalizedTeamId = normalizeTeamId(teamId);
+  return TEAM_OPTIONS.find((team) => team.id === normalizedTeamId) || null;
 }
 
 function isFinalBossQuestion(session, questionIndex = session.currentQuestionIndex) {
@@ -387,6 +437,110 @@ function getRoundScoring(question, isFinalBoss = false) {
 
 function getUnlockedHardRewards(hardScore) {
   return HARD_REWARD_TIERS.filter((reward) => hardScore >= reward.minHardPoints);
+}
+
+function getTeamCounts(session) {
+  const counts = new Map(TEAM_OPTIONS.map((team) => [team.id, 0]));
+  for (const player of session.players.values()) {
+    const teamId = normalizeTeamId(player.teamId);
+    if (!teamId) {
+      continue;
+    }
+    counts.set(teamId, (counts.get(teamId) || 0) + 1);
+  }
+  return counts;
+}
+
+function pickLeastCrowdedTeamId(counts) {
+  return TEAM_OPTIONS.reduce((bestTeamId, team) => {
+    if (!bestTeamId) {
+      return team.id;
+    }
+
+    const teamCount = counts.get(team.id) || 0;
+    const bestCount = counts.get(bestTeamId) || 0;
+    return teamCount < bestCount ? team.id : bestTeamId;
+  }, null);
+}
+
+function resolveTeamAssignment(session, requestedTeamId) {
+  const normalizedTeamId = normalizeTeamId(requestedTeamId);
+  if (normalizedTeamId) {
+    return normalizedTeamId;
+  }
+
+  return pickLeastCrowdedTeamId(getTeamCounts(session));
+}
+
+function ensureTeamAssignments(session) {
+  const counts = getTeamCounts(session);
+  for (const player of session.players.values()) {
+    if (normalizeTeamId(player.teamId)) {
+      continue;
+    }
+
+    const assignedTeamId = pickLeastCrowdedTeamId(counts);
+    if (!assignedTeamId) {
+      continue;
+    }
+
+    player.teamId = assignedTeamId;
+    counts.set(assignedTeamId, (counts.get(assignedTeamId) || 0) + 1);
+  }
+}
+
+function getTeamStandings(session) {
+  ensureTeamAssignments(session);
+
+  const buckets = new Map(
+    TEAM_OPTIONS.map((team) => [
+      team.id,
+      {
+        id: team.id,
+        name: team.name,
+        tone: team.tone,
+        score: 0,
+        memberCount: 0,
+        connectedCount: 0,
+        joinedAt: Number.POSITIVE_INFINITY
+      }
+    ])
+  );
+
+  for (const player of session.players.values()) {
+    const teamId = normalizeTeamId(player.teamId);
+    if (!teamId) {
+      continue;
+    }
+
+    const bucket = buckets.get(teamId);
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.score += player.score;
+    bucket.memberCount += 1;
+    if (player.connected) {
+      bucket.connectedCount += 1;
+    }
+    bucket.joinedAt = Math.min(bucket.joinedAt, player.joinedAt);
+  }
+
+  return [...buckets.values()]
+    .filter((team) => team.memberCount > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      if (right.connectedCount !== left.connectedCount) {
+        return right.connectedCount - left.connectedCount;
+      }
+      return left.joinedAt - right.joinedAt;
+    })
+    .map((team, index) => ({
+      ...team,
+      rank: index + 1
+    }));
 }
 
 function filterQuestionsByCategory(categorySelection) {
@@ -433,11 +587,12 @@ function normalizeName(value) {
   return trimmed.slice(0, 18);
 }
 
-function buildPlayer(name) {
+function buildPlayer(name, teamId = null) {
   return {
     id: crypto.randomUUID(),
     authKey: crypto.randomUUID(),
     name,
+    teamId,
     score: 0,
     streak: 0,
     joinedAt: Date.now(),
@@ -452,7 +607,10 @@ function buildPlayer(name) {
   };
 }
 
-function buildSession(categorySelection = DEFAULT_CATEGORY_SELECTION) {
+function buildSession(
+  categorySelection = DEFAULT_CATEGORY_SELECTION,
+  playModeSelection = DEFAULT_PLAY_MODE
+) {
   const selectedCategory = normalizeCategorySelection(categorySelection);
   return {
     pin: generatePin(),
@@ -469,6 +627,7 @@ function buildSession(categorySelection = DEFAULT_CATEGORY_SELECTION) {
     roundAnswers: new Map(),
     players: new Map(),
     selectedCategory,
+    playMode: normalizePlayMode(playModeSelection),
     questions: createQuestionSet(selectedCategory)
   };
 }
@@ -489,20 +648,26 @@ function getSortedPlayers(session) {
       }
       return left.joinedAt - right.joinedAt;
     })
-    .map((player, index) => ({
-      id: player.id,
-      name: player.name,
-      score: player.score,
-      streak: player.streak,
-      hardScore: player.hardScore,
-      hardCorrectCount: player.hardCorrectCount,
-      hardRewards: player.hardRewards,
-      latestRewards: player.latestRewards,
-      connected: player.connected,
-      lastDelta: player.lastDelta,
-      lastAnswerCorrect: player.lastAnswerCorrect,
-      rank: index + 1
-    }));
+    .map((player, index) => {
+      const team = getTeamConfig(player.teamId);
+      return {
+        id: player.id,
+        name: player.name,
+        teamId: team?.id || null,
+        teamName: team?.name || null,
+        teamTone: team?.tone || null,
+        score: player.score,
+        streak: player.streak,
+        hardScore: player.hardScore,
+        hardCorrectCount: player.hardCorrectCount,
+        hardRewards: player.hardRewards,
+        latestRewards: player.latestRewards,
+        connected: player.connected,
+        lastDelta: player.lastDelta,
+        lastAnswerCorrect: player.lastAnswerCorrect,
+        rank: index + 1
+      };
+    });
 }
 
 function getCurrentQuestion(session) {
@@ -551,10 +716,10 @@ function clearResumeIfInvalid(socket, message) {
   send(socket, { type: "session:clear-resume", message });
 }
 
-function createSession(socket, categorySelection) {
+function createSession(socket, categorySelection, playModeSelection) {
   let session = null;
   try {
-    session = buildSession(categorySelection);
+    session = buildSession(categorySelection, playModeSelection);
   } catch (_error) {
     sendError(socket, "That testament category is not ready yet. Try another selection.");
     return;
@@ -584,6 +749,25 @@ function updateCategory(socket, categorySelection) {
   } catch (_error) {
     sendError(socket, "That testament category is not ready yet. Try another selection.");
     return;
+  }
+
+  broadcastSession(session);
+}
+
+function updatePlayMode(socket, playModeSelection) {
+  const session = sessions.get(socket.meta.pin);
+  if (!session || socket.meta.role !== "host") {
+    return;
+  }
+
+  if (session.status !== "lobby") {
+    sendError(socket, "Choose solo or team battle before the game starts.");
+    return;
+  }
+
+  session.playMode = normalizePlayMode(playModeSelection);
+  if (session.playMode === "team") {
+    ensureTeamAssignments(session);
   }
 
   broadcastSession(session);
@@ -627,7 +811,7 @@ function resumeSession(socket, pin, role, authKey) {
   clearResumeIfInvalid(socket, "That session could not be restored.");
 }
 
-function joinSession(socket, requestedPin, requestedName) {
+function joinSession(socket, requestedPin, requestedName, requestedTeamId) {
   const pin = String(requestedPin || "").trim();
   const session = sessions.get(pin);
   if (!session) {
@@ -659,7 +843,7 @@ function joinSession(socket, requestedPin, requestedName) {
     return;
   }
 
-  const player = buildPlayer(name);
+  const player = buildPlayer(name, resolveTeamAssignment(session, requestedTeamId));
   session.players.set(player.id, player);
   setSocketMeta(socket, { role: "player", pin, playerId: player.id });
   broadcastSession(session);
@@ -943,6 +1127,7 @@ function buildQuestionState(session) {
 }
 
 function buildPayloadForSocket(session, socket) {
+  const teams = session.playMode === "team" ? getTeamStandings(session) : [];
   const players = getSortedPlayers(session);
   const selfPlayer = socket.meta.role === "player" ? session.players.get(socket.meta.playerId) : null;
   const selfRank = selfPlayer
@@ -968,6 +1153,8 @@ function buildPayloadForSocket(session, socket) {
       hostConnected: session.hostConnected,
       selectedCategory: session.selectedCategory,
       categoryLabel: getCategoryConfig(session.selectedCategory).label,
+      playMode: session.playMode,
+      playModeLabel: getPlayModeConfig(session.playMode).label,
       totalQuestions: session.questions.length,
       currentQuestionIndex: session.currentQuestionIndex,
       questionNumber: session.currentQuestionIndex + 1,
@@ -977,14 +1164,19 @@ function buildPayloadForSocket(session, socket) {
       connectedCount: activePlayerCount(session),
       answeredCount: session.roundAnswers.size,
       canStart: activePlayerCount(session) > 0,
+      teams,
       players,
       question: buildQuestionState(session),
       answerBreakdown: session.status === "reveal" ? session.answerBreakdown : null,
+      winningTeam: teams[0] || null,
       winner: players[0] || null,
       self: selfPlayer
         ? {
             id: selfPlayer.id,
             name: selfPlayer.name,
+            teamId: selfPlayer.teamId,
+            teamName: getTeamConfig(selfPlayer.teamId)?.name || null,
+            teamTone: getTeamConfig(selfPlayer.teamId)?.tone || null,
             score: selfPlayer.score,
             hardScore: selfPlayer.hardScore,
             hardCorrectCount: selfPlayer.hardCorrectCount,
@@ -1088,10 +1280,13 @@ wss.on("connection", (socket) => {
 
     switch (message.type) {
       case "host:create-session":
-        createSession(socket, message.categorySelection);
+        createSession(socket, message.categorySelection, message.playModeSelection);
         break;
       case "host:update-category":
         updateCategory(socket, message.categorySelection);
+        break;
+      case "host:update-play-mode":
+        updatePlayMode(socket, message.playModeSelection);
         break;
       case "host:start-game":
         startGame(socket);
@@ -1103,7 +1298,7 @@ wss.on("connection", (socket) => {
         restartGame(socket);
         break;
       case "player:join":
-        joinSession(socket, message.pin, message.name);
+        joinSession(socket, message.pin, message.name, message.teamSelection);
         break;
       case "player:submit-answer":
         submitAnswer(socket, message.answerIndex);
