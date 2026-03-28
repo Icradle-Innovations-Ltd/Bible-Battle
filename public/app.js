@@ -32,6 +32,7 @@ const state = {
   session: null,
   audioContext: null,
   playedAnswerSignals: new Set(),
+  playedEventSignals: new Set(),
   playedRewardSignals: new Set(),
   hostSetup: {
     categorySelection: window.localStorage.getItem(CATEGORY_KEY) || "mixed"
@@ -167,6 +168,84 @@ function playIncorrectAnswerSound(startDelaySeconds = 0) {
   scheduleTone(audioContext, 164.81, startTime + 0.2, 0.24, 0.022, "triangle");
 }
 
+function playLobbyJoinSound(kind = "self", startDelaySeconds = 0) {
+  const audioContext = unlockAudio();
+  if (!audioContext || audioContext.state !== "running") {
+    return;
+  }
+
+  const startTime = audioContext.currentTime + 0.02 + startDelaySeconds;
+
+  if (kind === "host") {
+    scheduleTone(audioContext, 392.0, startTime, 0.16, 0.022, "triangle");
+    scheduleTone(audioContext, 523.25, startTime + 0.08, 0.18, 0.026, "sine");
+    return;
+  }
+
+  const notes = [392.0, 523.25, 659.25];
+  notes.forEach((frequency, index) => {
+    scheduleTone(audioContext, frequency, startTime + index * 0.07, 0.2, 0.028 + index * 0.006);
+  });
+}
+
+function playGameStartSound(startDelaySeconds = 0) {
+  const audioContext = unlockAudio();
+  if (!audioContext || audioContext.state !== "running") {
+    return;
+  }
+
+  const startTime = audioContext.currentTime + 0.02 + startDelaySeconds;
+  const notes = [261.63, 329.63, 392.0, 523.25];
+
+  notes.forEach((frequency, index) => {
+    scheduleTone(audioContext, frequency, startTime + index * 0.09, 0.24, 0.03 + index * 0.008);
+  });
+
+  scheduleTone(audioContext, 130.81, startTime, 0.34, 0.026, "sine");
+}
+
+function handleGameEventSound(nextSession, previousSession, role) {
+  if (!nextSession) {
+    return;
+  }
+
+  const hasStoredResume = Boolean(loadResume());
+
+  if (
+    role === "player" &&
+    nextSession.status === "lobby" &&
+    nextSession.self?.id &&
+    !hasStoredResume
+  ) {
+    const signal = `${nextSession.pin}:join-self:${nextSession.self.id}`;
+    if (!state.playedEventSignals.has(signal)) {
+      state.playedEventSignals.add(signal);
+      playLobbyJoinSound("self");
+    }
+  }
+
+  if (
+    role === "host" &&
+    nextSession.status === "lobby" &&
+    previousSession?.pin === nextSession.pin &&
+    nextSession.playerCount > previousSession.playerCount
+  ) {
+    const signal = `${nextSession.pin}:join-host:${nextSession.playerCount}`;
+    if (!state.playedEventSignals.has(signal)) {
+      state.playedEventSignals.add(signal);
+      playLobbyJoinSound("host");
+    }
+  }
+
+  if (previousSession?.status === "lobby" && nextSession.status === "question") {
+    const signal = `${nextSession.pin}:game-start:${nextSession.questionNumber}`;
+    if (!state.playedEventSignals.has(signal)) {
+      state.playedEventSignals.add(signal);
+      playGameStartSound();
+    }
+  }
+}
+
 function getRewardSignals(session) {
   if (!session?.players?.length) {
     return [];
@@ -295,6 +374,7 @@ function connectSocket() {
         render();
         break;
       case "session:state":
+        handleGameEventSound(message.session, state.session, message.role);
         const playedAnswerSound = handleAnswerResultSound(message.session, state.session, message.role);
         handleRewardSound(message.session, state.session, playedAnswerSound ? 0.32 : 0);
         state.role = message.role;

@@ -28,5 +28,6 @@ Then open `http://localhost:3000`.
 - Automatic scoring with Easy / Medium / Hard point weights plus speed bonus
 - Visual hard-mode badges for standout scores on difficult questions
 - Synthesized sound effects for correct answers, incorrect answers, and badge unlocks
+- Game-event sounds for joining a lobby and launching a round
 - Reveal screens with scripture references
 - Final leaderboard and replay button
