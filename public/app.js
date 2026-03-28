@@ -847,7 +847,9 @@ function renderHeader() {
   return `
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">+</div>
+        <div class="brand-mark">
+          <img class="brand-logo" src="/logo.jpg" alt="Amen Arena logo" />
+        </div>
         <div class="brand-copy">
           <h1>Amen Arena</h1>
           <p>Fast hands. Scripture smarts. Live leaderboard energy.</p>
