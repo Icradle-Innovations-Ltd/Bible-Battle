@@ -27,5 +27,6 @@ Then open `http://localhost:3000`.
 - Real-time answers over WebSockets
 - Automatic scoring with Easy / Medium / Hard point weights plus speed bonus
 - Visual hard-mode badges for standout scores on difficult questions
+- Synthesized sound effects for correct answers, incorrect answers, and badge unlocks
 - Reveal screens with scripture references
 - Final leaderboard and replay button

@@ -30,6 +30,9 @@ const state = {
   connected: false,
   role: "guest",
   session: null,
+  audioContext: null,
+  playedAnswerSignals: new Set(),
+  playedRewardSignals: new Set(),
   hostSetup: {
     categorySelection: window.localStorage.getItem(CATEGORY_KEY) || "mixed"
   },
@@ -80,6 +83,160 @@ function clearResume() {
 function saveCategorySelection(categorySelection) {
   state.hostSetup.categorySelection = categorySelection;
   window.localStorage.setItem(CATEGORY_KEY, categorySelection);
+}
+
+function unlockAudio() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return null;
+  }
+
+  if (!state.audioContext) {
+    state.audioContext = new AudioContextConstructor();
+  }
+
+  if (state.audioContext.state === "suspended") {
+    state.audioContext.resume().catch(() => {});
+  }
+
+  return state.audioContext;
+}
+
+function scheduleTone(audioContext, frequency, startTime, duration, peakGain, type = "triangle") {
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+
+  gainNode.gain.setValueAtTime(0.0001, startTime);
+  gainNode.gain.linearRampToValueAtTime(peakGain, startTime + 0.03);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration);
+}
+
+function playBadgeEarnSound(unlockCount, startDelaySeconds = 0) {
+  const audioContext = unlockAudio();
+  if (!audioContext || audioContext.state !== "running") {
+    return;
+  }
+
+  const fanfareNotes =
+    unlockCount > 1
+      ? [523.25, 659.25, 783.99, 1046.5]
+      : [523.25, 659.25, 880];
+  const startTime = audioContext.currentTime + 0.02 + startDelaySeconds;
+
+  fanfareNotes.forEach((frequency, index) => {
+    scheduleTone(audioContext, frequency, startTime + index * 0.11, 0.28, 0.04 + index * 0.01);
+  });
+
+  scheduleTone(audioContext, 261.63, startTime, 0.42, 0.03, "sine");
+}
+
+function playCorrectAnswerSound(startDelaySeconds = 0) {
+  const audioContext = unlockAudio();
+  if (!audioContext || audioContext.state !== "running") {
+    return;
+  }
+
+  const startTime = audioContext.currentTime + 0.02 + startDelaySeconds;
+  const notes = [523.25, 659.25, 783.99];
+
+  notes.forEach((frequency, index) => {
+    scheduleTone(audioContext, frequency, startTime + index * 0.08, 0.22, 0.035 + index * 0.008);
+  });
+
+  scheduleTone(audioContext, 261.63, startTime, 0.28, 0.025, "sine");
+}
+
+function playIncorrectAnswerSound(startDelaySeconds = 0) {
+  const audioContext = unlockAudio();
+  if (!audioContext || audioContext.state !== "running") {
+    return;
+  }
+
+  const startTime = audioContext.currentTime + 0.02 + startDelaySeconds;
+  scheduleTone(audioContext, 261.63, startTime, 0.18, 0.03, "square");
+  scheduleTone(audioContext, 207.65, startTime + 0.1, 0.2, 0.026, "sawtooth");
+  scheduleTone(audioContext, 164.81, startTime + 0.2, 0.24, 0.022, "triangle");
+}
+
+function getRewardSignals(session) {
+  if (!session?.players?.length) {
+    return [];
+  }
+
+  return session.players.flatMap((player) =>
+    (player.latestRewards || []).map(
+      (reward) => `${session.pin}:${session.questionNumber}:${player.id}:${reward.id}`
+    )
+  );
+}
+
+function handleRewardSound(nextSession, previousSession, startDelaySeconds = 0) {
+  const nextSignals = getRewardSignals(nextSession);
+  if (!nextSignals.length) {
+    return;
+  }
+
+  const previousSignals = new Set(getRewardSignals(previousSession));
+  const unheardSignals = nextSignals.filter(
+    (signal) => !previousSignals.has(signal) && !state.playedRewardSignals.has(signal)
+  );
+
+  if (!unheardSignals.length) {
+    return;
+  }
+
+  unheardSignals.forEach((signal) => {
+    state.playedRewardSignals.add(signal);
+  });
+
+  playBadgeEarnSound(unheardSignals.length, startDelaySeconds);
+}
+
+function getAnswerResultSignal(session) {
+  if (
+    session?.status !== "reveal" ||
+    !session.self ||
+    typeof session.self.lastAnswerCorrect !== "boolean"
+  ) {
+    return null;
+  }
+
+  return `${session.pin}:${session.questionNumber}:${session.self.id}:${session.self.lastAnswerCorrect ? "correct" : "incorrect"}`;
+}
+
+function handleAnswerResultSound(nextSession, previousSession, role) {
+  if (role !== "player") {
+    return false;
+  }
+
+  const nextSignal = getAnswerResultSignal(nextSession);
+  if (!nextSignal) {
+    return false;
+  }
+
+  const previousSignal = getAnswerResultSignal(previousSession);
+  if (nextSignal === previousSignal || state.playedAnswerSignals.has(nextSignal)) {
+    return false;
+  }
+
+  state.playedAnswerSignals.add(nextSignal);
+
+  if (nextSession.self.lastAnswerCorrect) {
+    playCorrectAnswerSound();
+  } else {
+    playIncorrectAnswerSound();
+  }
+
+  return true;
 }
 
 function showToast(message) {
@@ -138,6 +295,8 @@ function connectSocket() {
         render();
         break;
       case "session:state":
+        const playedAnswerSound = handleAnswerResultSound(message.session, state.session, message.role);
+        handleRewardSound(message.session, state.session, playedAnswerSound ? 0.32 : 0);
         state.role = message.role;
         state.session = message.session;
         if (message.session?.selectedCategory) {
@@ -838,6 +997,8 @@ app.addEventListener("submit", (event) => {
     return;
   }
 
+  unlockAudio();
+
   if (form.dataset.form === "join") {
     event.preventDefault();
     sendMessage({
@@ -853,6 +1014,8 @@ app.addEventListener("click", async (event) => {
   if (!actionTarget) {
     return;
   }
+
+  unlockAudio();
 
   const { action } = actionTarget.dataset;
 
